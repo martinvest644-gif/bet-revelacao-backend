@@ -9,20 +9,15 @@
     html, body, #root { height: 100%; background: #0a0a1a; }
     body { font-family: -apple-system, "SF Pro Display", system-ui, sans-serif; overscroll-behavior: none; }
     button { cursor: pointer; }
+    input { -webkit-appearance: none; }
     @keyframes confetti-float {
       0%   { transform: translateY(0) rotate(0deg) scale(1); opacity: 0.9; }
       100% { transform: translateY(-40px) rotate(200deg) scale(0.8); opacity: 0.5; }
     }
-    @keyframes blink { 0%,49% { opacity: 1; } 50%,100% { opacity: 0; } }
-    @keyframes spin   { to { transform: rotate(360deg); } }
-    @keyframes slideUp {
-      from { transform: translateY(14px); opacity: 0; }
-      to   { transform: translateY(0);    opacity: 1; }
-    }
-    @keyframes fadeIn {
-      from { opacity: 0; }
-      to   { opacity: 1; }
-    }
+    @keyframes blink   { 0%,49%{opacity:1}50%,100%{opacity:0} }
+    @keyframes spin    { to { transform: rotate(360deg); } }
+    @keyframes slideUp { from{transform:translateY(14px);opacity:0} to{transform:translateY(0);opacity:1} }
+    @keyframes fadeIn  { from{opacity:0} to{opacity:1} }
     .screen { animation: fadeIn .25s ease; }
   </style>
 </head>
@@ -36,7 +31,7 @@
 
 <script type="text/babel">
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
-const API = 'https://web-production-762ee0.up.railway.app';
+const API = '';  // mesmo domínio — Railway serve tudo junto
 
 const PARTY = {
   parents:   'Família Martins Sorato',
@@ -47,96 +42,257 @@ const PARTY = {
   pixCode:   '00020126420014BR.GOV.BCB.PIX0111057480081650205BBaby5204000053039865802BR5924Nicholas Eduardo Pereira6009SAO PAULO62140510NO6RiPLeRv630452AF',
 };
 
-// ─── HELPERS ─────────────────────────────────────────────────────────────────
+// ─── UTILS ───────────────────────────────────────────────────────────────────
 const fmt = (v) => `R$ ${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 
-function Confetti({ count = 36, colors = ['#2563EB','#EC4899','#F97316','#FFFFFF','#FCD34D'] }) {
-  const pieces = React.useMemo(() => Array.from({ length: count }, (_, i) => {
-    const seed = i * 9301 + 49297;
-    const r = (n) => ((seed * (n + 1)) % 233280) / 233280;
-    return { left: r(1)*100, top: r(2)*100, size: 4+r(3)*8, rot: r(4)*360,
-             color: colors[i % colors.length], shape: i % 3, delay: r(5)*3 };
+function legacyCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  try { document.execCommand('copy'); } catch(e) {}
+  document.body.removeChild(ta);
+}
+
+function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text).catch(() => legacyCopy(text));
+  }
+  legacyCopy(text);
+  return Promise.resolve();
+}
+
+function adminFetch(path, method = 'GET', body) {
+  const pass = sessionStorage.getItem('adminPass') || '';
+  return fetch(`${API}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json', 'x-admin-pass': pass },
+    body: body ? JSON.stringify(body) : undefined,
+  }).then(r => r.json());
+}
+
+// ─── SHARE IMAGE ─────────────────────────────────────────────────────────────
+function rrect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y);
+  ctx.closePath();
+}
+
+async function generateShareCard(name, team) {
+  const W = 1080, H = 1920;
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const c = cv.getContext('2d');
+
+  const familyImg = await new Promise(res => {
+    const img = new Image();
+    img.onload  = () => res(img);
+    img.onerror = () => res(null);
+    img.src = 'family.jpeg';
+  });
+
+  // fundo gradiente
+  const gBg = c.createLinearGradient(0, 0, W, H);
+  if (team === 'boy') {
+    gBg.addColorStop(0,'#0f172a'); gBg.addColorStop(0.5,'#1e3a8a'); gBg.addColorStop(1,'#2563EB');
+  } else {
+    gBg.addColorStop(0,'#1a0a1a'); gBg.addColorStop(0.5,'#831843'); gBg.addColorStop(1,'#EC4899');
+  }
+  c.fillStyle = gBg; c.fillRect(0,0,W,H);
+
+  // fotos da família caindo em posições rotacionadas
+  if (familyImg) {
+    const placements = [
+      { x:860, y:200,  s:260, rot:18,  alpha:0.22 },
+      { x:80,  y:520,  s:200, rot:-12, alpha:0.18 },
+      { x:780, y:860,  s:230, rot:25,  alpha:0.20 },
+      { x:60,  y:1200, s:180, rot:-8,  alpha:0.16 },
+      { x:820, y:1400, s:210, rot:14,  alpha:0.19 },
+      { x:180, y:1640, s:190, rot:-20, alpha:0.17 },
+    ];
+    placements.forEach(({ x, y, s, rot, alpha }) => {
+      c.save();
+      c.globalAlpha = alpha;
+      c.translate(x, y);
+      c.rotate(rot * Math.PI / 180);
+      rrect(c, -s/2, -s/2, s, s, 24);
+      c.clip();
+      c.drawImage(familyImg, -s/2, -s/2, s, s);
+      c.restore();
+    });
+  }
+
+  // "?" marks flutuando
+  const qPos = [
+    { x:180, y:280,  size:110, alpha:0.25, rot:-15 },
+    { x:920, y:530,  size:90,  alpha:0.20, rot:20  },
+    { x:120, y:1000, size:130, alpha:0.22, rot:-8  },
+    { x:900, y:1170, size:100, alpha:0.18, rot:12  },
+    { x:500, y:1470, size:80,  alpha:0.20, rot:-5  },
+  ];
+  qPos.forEach(({ x, y, size, alpha, rot }) => {
+    c.save();
+    c.globalAlpha = alpha;
+    c.translate(x, y);
+    c.rotate(rot * Math.PI / 180);
+    c.fillStyle = '#fff';
+    c.font = `900 ${size}px -apple-system, Arial, sans-serif`;
+    c.textAlign = 'center';
+    c.fillText('?', 0, 0);
+    c.restore();
+  });
+  c.textAlign = 'left';
+
+  // overlay escuro para legibilidade
+  const ov = c.createLinearGradient(0, 0, 0, H);
+  ov.addColorStop(0,'rgba(0,0,0,0.55)');
+  ov.addColorStop(0.45,'rgba(0,0,0,0.3)');
+  ov.addColorStop(0.8,'rgba(0,0,0,0.5)');
+  ov.addColorStop(1,'rgba(0,0,0,0.65)');
+  c.fillStyle = ov; c.globalAlpha=1; c.fillRect(0,0,W,H);
+
+  // tag topo
+  c.fillStyle = 'rgba(255,255,255,0.18)';
+  rrect(c,80,160,380,64,32); c.fill();
+  c.fillStyle = '#fff';
+  c.font = `bold 30px -apple-system, Arial, sans-serif`;
+  c.fillText(`● BETBABY · ${PARTY.date}`, 118, 204);
+
+  // texto principal
+  c.fillStyle = '#fff';
+  c.font = `900 italic 210px -apple-system, Arial, sans-serif`;
+  c.fillText('EU', 80, 600);
+  c.font = `900 italic 148px -apple-system, Arial, sans-serif`;
+  c.fillText('APOSTEI', 80, 780);
+
+  c.font = `900 italic 128px -apple-system, Arial, sans-serif`;
+  c.fillStyle = team === 'boy' ? '#93C5FD' : '#F9A8D4';
+  c.fillText(team === 'boy' ? 'MENINO!' : 'MENINA!', 80, 940);
+  c.font = `110px sans-serif`;
+  c.fillText(team === 'boy' ? '👦' : '👧', 80, 1070);
+
+  c.font = `52px -apple-system, Arial, sans-serif`;
+  c.fillStyle = 'rgba(255,255,255,0.82)';
+  c.fillText(`do ${PARTY.babyName}`, 80, 1155);
+
+  c.font = `bold 48px -apple-system, Arial, sans-serif`;
+  c.fillStyle = 'rgba(255,255,255,0.55)';
+  c.fillText(name, 80, 1220);
+
+  // card inferior
+  c.fillStyle = 'rgba(255,255,255,0.14)';
+  rrect(c,80,H-330,W-160,210,36); c.fill();
+  c.strokeStyle = 'rgba(255,255,255,0.22)'; c.lineWidth = 2;
+  rrect(c,80,H-330,W-160,210,36); c.stroke();
+  c.fillStyle = 'rgba(255,255,255,0.7)';
+  c.font = `42px -apple-system, Arial, sans-serif`;
+  c.fillText('E você, chuta o quê?', 120, H-265);
+  c.fillStyle = '#fff';
+  c.font = `bold 54px -apple-system, Arial, sans-serif`;
+  c.fillText('betbaby.app/sorato  \u2192', 120, H-195);
+
+  return cv;
+}
+
+async function shareCard(name, team) {
+  const cv = await generateShareCard(name, team);
+  return new Promise(resolve => {
+    cv.toBlob(async (blob) => {
+      const file = new File([blob], 'bet-revelacao.jpg', { type: 'image/jpeg' });
+      let shared = false;
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({ files:[file], title:'BET Revelação',
+            text:`Apostei no chá revelação do ${PARTY.babyName}! E você?` });
+          shared = true;
+        } catch(e) { if (e.name === 'AbortError') { resolve(); return; } }
+      }
+      if (!shared) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'bet-revelacao.jpg'; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+      }
+      resolve();
+    }, 'image/jpeg', 0.92);
+  });
+}
+
+// ─── SHARED COMPONENTS ───────────────────────────────────────────────────────
+function Confetti({ count=36, colors=['#2563EB','#EC4899','#F97316','#FFFFFF','#FCD34D'] }) {
+  const pieces = React.useMemo(() => Array.from({ length:count }, (_,i) => {
+    const seed = i*9301+49297;
+    const r = (n) => ((seed*(n+1))%233280)/233280;
+    return { left:r(1)*100, top:r(2)*100, size:4+r(3)*8, rot:r(4)*360,
+             color:colors[i%colors.length], shape:i%3, delay:r(5)*3 };
   }), []);
   return (
-    <div style={{ position:'absolute', inset:0, pointerEvents:'none', overflow:'hidden' }}>
+    <div style={{position:'absolute',inset:0,pointerEvents:'none',overflow:'hidden'}}>
       {pieces.map((p,i) => (
-        <div key={i} style={{
-          position:'absolute', left:`${p.left}%`, top:`${p.top}%`,
-          width: p.size, height: p.shape===1 ? p.size*1.6 : p.size,
-          background: p.color, borderRadius: p.shape===2 ? '50%' : 2,
-          transform: `rotate(${p.rot}deg)`,
-          animation: `confetti-float ${3+p.delay}s ease-in-out ${p.delay}s infinite alternate`,
-        }} />
+        <div key={i} style={{ position:'absolute', left:`${p.left}%`, top:`${p.top}%`,
+          width:p.size, height:p.shape===1?p.size*1.6:p.size, background:p.color,
+          borderRadius:p.shape===2?'50%':2, transform:`rotate(${p.rot}deg)`,
+          animation:`confetti-float ${3+p.delay}s ease-in-out ${p.delay}s infinite alternate` }} />
       ))}
     </div>
   );
 }
 
-function BabyPhoto({ size=88, ring=true }) {
+function BabyPhoto({ size=88 }) {
   return (
-    <div style={{
-      width:size, height:size, borderRadius:size/2, flexShrink:0,
-      padding: ring ? 2 : 0,
-      background: ring ? 'linear-gradient(135deg,#60A5FA,#F472B6,#FB923C)' : 'transparent',
-      boxShadow: ring ? '0 8px 24px rgba(236,72,153,.35)' : 'none',
-    }}>
+    <div style={{ width:size, height:size, borderRadius:size/2, flexShrink:0, padding:2,
+      background:'linear-gradient(135deg,#60A5FA,#F472B6,#FB923C)',
+      boxShadow:'0 8px 24px rgba(236,72,153,.35)' }}>
       <img src="family.jpeg" alt="Família"
-        style={{ width:'100%', height:'100%', borderRadius:(size/2)-(ring?2:0),
+        style={{ width:'100%', height:'100%', borderRadius:size/2-2,
                  objectFit:'cover', objectPosition:'50% 35%', display:'block' }} />
     </div>
   );
 }
 
-// Gradiente bg blobs reutilizável
 function Blobs() {
   return <>
-    <div style={{ position:'absolute', top:-100, left:-100, width:400, height:400, borderRadius:'50%',
-      background:'radial-gradient(circle,#2563EB 0%,transparent 70%)', filter:'blur(40px)' }} />
-    <div style={{ position:'absolute', top:200, right:-120, width:380, height:380, borderRadius:'50%',
-      background:'radial-gradient(circle,#EC4899 0%,transparent 70%)', filter:'blur(40px)' }} />
-    <div style={{ position:'absolute', bottom:-80, left:40, width:320, height:320, borderRadius:'50%',
-      background:'radial-gradient(circle,#F97316 0%,transparent 70%)', filter:'blur(40px)' }} />
+    <div style={{position:'absolute',top:-100,left:-100,width:400,height:400,borderRadius:'50%',
+      background:'radial-gradient(circle,#2563EB 0%,transparent 70%)',filter:'blur(40px)'}}/>
+    <div style={{position:'absolute',top:200,right:-120,width:380,height:380,borderRadius:'50%',
+      background:'radial-gradient(circle,#EC4899 0%,transparent 70%)',filter:'blur(40px)'}}/>
+    <div style={{position:'absolute',bottom:-80,left:40,width:320,height:320,borderRadius:'50%',
+      background:'radial-gradient(circle,#F97316 0%,transparent 70%)',filter:'blur(40px)'}}/>
   </>;
 }
 
-function GradBtn({ children, onClick, disabled, color }) {
-  const bg = color === 'green'
-    ? 'linear-gradient(90deg,#22C55E,#16A34A)'
-    : 'linear-gradient(90deg,#2563EB,#EC4899,#F97316)';
+function GradBtn({ children, onClick, disabled, green }) {
   return (
     <button onClick={onClick} disabled={disabled} style={{
       width:'100%', height:58, borderRadius:20, border:'none',
-      background: disabled ? 'rgba(255,255,255,0.1)' : bg,
+      background: disabled ? 'rgba(255,255,255,0.1)'
+        : green ? 'linear-gradient(90deg,#22C55E,#16A34A)'
+        : 'linear-gradient(90deg,#2563EB,#EC4899,#F97316)',
       color: disabled ? 'rgba(255,255,255,0.4)' : '#fff',
-      fontSize:18, fontWeight:800, letterSpacing:-0.3,
-      fontFamily:'inherit', fontStyle:'italic',
-      boxShadow: disabled ? 'none' : '0 12px 32px rgba(236,72,153,.4)',
-      transition:'all .2s',
+      fontSize:18, fontWeight:800, letterSpacing:-0.3, fontFamily:'inherit', fontStyle:'italic',
+      boxShadow: disabled ? 'none' : '0 12px 32px rgba(236,72,153,.4)', transition:'all .2s',
     }}>{children}</button>
   );
 }
 
-// Barra de progresso com steps
 function StepBar({ step, total=4, onBack }) {
   return (
-    <div style={{ display:'flex', alignItems:'center', gap:16, marginBottom:24 }}>
-      <div onClick={onBack} style={{
-        width:40, height:40, borderRadius:20,
-        background:'rgba(255,255,255,0.1)', border:'1px solid rgba(255,255,255,0.15)',
-        display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0,
-      }}>
+    <div style={{display:'flex',alignItems:'center',gap:16,marginBottom:24}}>
+      <div onClick={onBack} style={{ width:40,height:40,borderRadius:20,
+        background:'rgba(255,255,255,0.1)',border:'1px solid rgba(255,255,255,0.15)',
+        display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,cursor:'pointer' }}>
         <svg width="10" height="16" viewBox="0 0 10 16" fill="none">
           <path d="M8 2L2 8l6 6" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       </div>
-      <div style={{ display:'flex', gap:6, flex:1 }}>
-        {Array.from({ length:total }, (_,i) => (
-          <div key={i} style={{
-            flex:1, height:4, borderRadius:2,
-            background: i < step
-              ? 'linear-gradient(90deg,#2563EB,#EC4899,#F97316)'
-              : 'rgba(255,255,255,0.15)',
-          }} />
+      <div style={{display:'flex',gap:6,flex:1}}>
+        {Array.from({length:total},(_,i) => (
+          <div key={i} style={{ flex:1, height:4, borderRadius:2,
+            background: i<step ? 'linear-gradient(90deg,#2563EB,#EC4899,#F97316)' : 'rgba(255,255,255,0.15)' }} />
         ))}
       </div>
     </div>
@@ -145,16 +301,16 @@ function StepBar({ step, total=4, onBack }) {
 
 function BoldFrame({ children, step, total=4, onBack }) {
   return (
-    <div style={{ height:'100%', position:'relative', overflow:'hidden',
-      background:'#0F0F23', fontFamily:'inherit', color:'#fff' }}>
-      <div style={{ position:'absolute', top:-120, right:-100, width:320, height:320,
-        borderRadius:'50%', opacity:.5,
-        background:'radial-gradient(circle,#EC4899 0%,transparent 70%)', filter:'blur(50px)' }} />
-      <div style={{ position:'absolute', bottom:-100, left:-60, width:260, height:260,
-        borderRadius:'50%', opacity:.4,
-        background:'radial-gradient(circle,#2563EB 0%,transparent 70%)', filter:'blur(50px)' }} />
-      <div style={{ position:'relative', height:'100%', padding:'60px 24px 0',
-        display:'flex', flexDirection:'column' }}>
+    <div style={{height:'100%',position:'relative',overflow:'hidden',
+      background:'#0F0F23',fontFamily:'inherit',color:'#fff'}}>
+      <div style={{position:'absolute',top:-120,right:-100,width:320,height:320,
+        borderRadius:'50%',opacity:.5,
+        background:'radial-gradient(circle,#EC4899 0%,transparent 70%)',filter:'blur(50px)'}}/>
+      <div style={{position:'absolute',bottom:-100,left:-60,width:260,height:260,
+        borderRadius:'50%',opacity:.4,
+        background:'radial-gradient(circle,#2563EB 0%,transparent 70%)',filter:'blur(50px)'}}/>
+      <div style={{position:'relative',height:'100%',padding:'60px 24px 0',
+        display:'flex',flexDirection:'column'}}>
         <StepBar step={step} total={total} onBack={onBack} />
         {children}
       </div>
@@ -164,51 +320,71 @@ function BoldFrame({ children, step, total=4, onBack }) {
 
 function StepLabel({ n, label }) {
   return (
-    <div style={{ fontSize:13, fontWeight:800, letterSpacing:2,
+    <div style={{ fontSize:13,fontWeight:800,letterSpacing:2,
       background:'linear-gradient(90deg,#60A5FA,#F472B6)',
-      WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent',
-      marginBottom:10 }}>{n} / {label}</div>
+      WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',marginBottom:10 }}>
+      {n} / {label}
+    </div>
   );
 }
 
+function Spinner() {
+  return <div style={{ width:16,height:16,borderRadius:8,
+    border:'2px solid rgba(255,255,255,0.2)',borderTopColor:'#FCD34D',
+    animation:'spin 1s linear infinite',display:'inline-block' }} />;
+}
+
 // ─── TELA 1: SPLASH ──────────────────────────────────────────────────────────
-function SplashScreen({ bets, onStart }) {
+function SplashScreen({ bets, onStart, onRanking, onAdmin }) {
+  const [tapCount, setTapCount] = React.useState(0);
+  const tapTimer = React.useRef(null);
+
+  const handleLogoTap = () => {
+    const next = tapCount + 1;
+    setTapCount(next);
+    clearTimeout(tapTimer.current);
+    if (next >= 5) { setTapCount(0); onAdmin(); return; }
+    tapTimer.current = setTimeout(() => setTapCount(0), 2000);
+  };
+
   return (
-    <div className="screen" style={{ height:'100%', position:'relative', overflow:'hidden',
-      background:'#0F0F23', fontFamily:'inherit' }}>
+    <div className="screen" style={{ height:'100%',position:'relative',overflow:'hidden',
+      background:'#0F0F23',fontFamily:'inherit' }}>
       <Blobs />
       <Confetti count={24} colors={['#FFFFFF','#FCD34D','#FB7185']} />
-      <div style={{ position:'relative', height:'100%', padding:'72px 28px 40px',
-        display:'flex', flexDirection:'column' }}>
-        <div style={{
-          alignSelf:'flex-start', padding:'6px 14px', borderRadius:999,
-          background:'rgba(255,255,255,0.12)', border:'1px solid rgba(255,255,255,0.2)',
-          color:'#fff', fontSize:11, fontWeight:700, letterSpacing:1.5, marginBottom:20,
-        }}>● AO VIVO · {bets.length} {bets.length === 1 ? 'APOSTA' : 'APOSTAS'}</div>
-
-        <BabyPhoto size={88} />
-
-        <div style={{ fontSize:56, fontWeight:900, color:'#fff', letterSpacing:-2.5,
-          lineHeight:.95, marginTop:18, marginBottom:4, fontStyle:'italic' }}>CHUTA AÍ,</div>
-        <div style={{ fontSize:30, fontWeight:900, letterSpacing:-1, lineHeight:1,
-          marginBottom:16, fontStyle:'italic',
-          background:'linear-gradient(90deg,#60A5FA,#F472B6,#FB923C)',
-          WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}>
-          do {PARTY.babyName}</div>
-
-        <div style={{ fontSize:15, color:'rgba(255,255,255,0.75)', lineHeight:1.45,
-          marginBottom:'auto', maxWidth:300 }}>
-          Aposta no Pix. Acertou o sexo? Concorre a{' '}
-          <b style={{ color:'#FCD34D' }}>{PARTY.prize}</b>.
+      <div style={{ position:'relative',height:'100%',padding:'72px 28px 40px',
+        display:'flex',flexDirection:'column' }}>
+        <div style={{ alignSelf:'flex-start',padding:'6px 14px',borderRadius:999,
+          background:'rgba(255,255,255,0.12)',border:'1px solid rgba(255,255,255,0.2)',
+          color:'#fff',fontSize:11,fontWeight:700,letterSpacing:1.5,marginBottom:20 }}>
+          ● AO VIVO · {bets.length} {bets.length===1?'APOSTA':'APOSTAS'}
         </div>
 
-        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+        <div onClick={handleLogoTap} style={{ cursor:'default',userSelect:'none',width:'fit-content' }}>
+          <BabyPhoto size={88} />
+        </div>
+
+        <div style={{ fontSize:56,fontWeight:900,color:'#fff',letterSpacing:-2.5,
+          lineHeight:.95,marginTop:18,marginBottom:4,fontStyle:'italic' }}>CHUTA AÍ,</div>
+        <div style={{ fontSize:30,fontWeight:900,letterSpacing:-1,lineHeight:1,
+          marginBottom:16,fontStyle:'italic',
+          background:'linear-gradient(90deg,#60A5FA,#F472B6,#FB923C)',
+          WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent' }}>
+          do {PARTY.babyName}</div>
+
+        <div style={{ fontSize:15,color:'rgba(255,255,255,0.75)',lineHeight:1.45,
+          marginBottom:'auto',maxWidth:300 }}>
+          Aposta no Pix. Acertou o sexo? Concorre a{' '}
+          <b style={{color:'#FCD34D'}}>{PARTY.prize}</b>.
+        </div>
+
+        <div style={{display:'flex',flexDirection:'column',gap:10}}>
           <GradBtn onClick={onStart}>Fazer meu palpite →</GradBtn>
-          <button onClick={() => window._goRanking && window._goRanking()} style={{
-            width:'100%', height:44, borderRadius:14,
-            background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.15)',
-            color:'rgba(255,255,255,0.7)', fontSize:13, fontWeight:700, fontFamily:'inherit',
-          }}>Ver ranking ao vivo →</button>
+          <button onClick={onRanking} style={{ width:'100%',height:44,borderRadius:14,
+            background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.15)',
+            color:'rgba(255,255,255,0.7)',fontSize:13,fontWeight:700,fontFamily:'inherit' }}>
+            Ver ranking ao vivo →
+          </button>
         </div>
       </div>
     </div>
@@ -219,56 +395,42 @@ function SplashScreen({ bets, onStart }) {
 function NameScreen({ name, setName, onNext, onBack }) {
   return (
     <BoldFrame step={1} onBack={onBack}>
-      <div className="screen" style={{ display:'flex', flexDirection:'column', flex:1 }}>
+      <div className="screen" style={{display:'flex',flexDirection:'column',flex:1}}>
         <StepLabel n="01" label="QUEM CHUTA" />
-        <div style={{ fontSize:40, fontWeight:900, letterSpacing:-1.6, lineHeight:1,
-          marginBottom:10, fontStyle:'italic' }}>Seu nome</div>
-        <div style={{ fontSize:14, color:'rgba(255,255,255,0.65)', marginBottom:28, lineHeight:1.4 }}>
-          No ranking da <b style={{ color:'#fff' }}>BET Revelação</b> vai aparecer exatamente assim.
+        <div style={{fontSize:40,fontWeight:900,letterSpacing:-1.6,lineHeight:1,
+          marginBottom:10,fontStyle:'italic'}}>Seu nome</div>
+        <div style={{fontSize:14,color:'rgba(255,255,255,0.65)',marginBottom:28,lineHeight:1.4}}>
+          No ranking da <b style={{color:'#fff'}}>BET Revelação</b> vai aparecer exatamente assim.
         </div>
-
-        <div style={{ background:'rgba(255,255,255,0.06)', borderRadius:20,
-          padding:'18px 20px', border:'1px solid rgba(255,255,255,0.12)', marginBottom:14 }}>
-          <div style={{ fontSize:11, color:'rgba(255,255,255,0.5)', fontWeight:700,
-            letterSpacing:1.2, marginBottom:6 }}>PALPITEIRO(A)</div>
-          <div style={{ display:'flex', alignItems:'center' }}>
-            <input
-              value={name}
-              onChange={e => setName(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && name.trim() && onNext()}
-              placeholder="Seu nome..."
-              autoFocus
-              style={{
-                background:'transparent', border:'none', outline:'none',
-                fontSize:24, fontWeight:700, color:'#fff', fontFamily:'inherit',
-                width:'100%',
-              }}
-            />
-            {name && <span style={{
-              display:'inline-block', width:3, height:26, marginLeft:3,
-              background:'linear-gradient(180deg,#EC4899,#F97316)',
-              animation:'blink 1s infinite',
-            }} />}
+        <div style={{background:'rgba(255,255,255,0.06)',borderRadius:20,
+          padding:'18px 20px',border:'1px solid rgba(255,255,255,0.12)',marginBottom:14}}>
+          <div style={{fontSize:11,color:'rgba(255,255,255,0.5)',fontWeight:700,
+            letterSpacing:1.2,marginBottom:6}}>PALPITEIRO(A)</div>
+          <div style={{display:'flex',alignItems:'center'}}>
+            <input value={name} onChange={e=>setName(e.target.value)}
+              onKeyDown={e=>e.key==='Enter'&&name.trim()&&onNext()}
+              placeholder="Seu nome..." autoFocus
+              style={{ background:'transparent',border:'none',outline:'none',
+                fontSize:24,fontWeight:700,color:'#fff',fontFamily:'inherit',width:'100%' }} />
+            {name && <span style={{ display:'inline-block',width:3,height:26,marginLeft:3,
+              background:'linear-gradient(180deg,#EC4899,#F97316)',animation:'blink 1s infinite' }} />}
           </div>
         </div>
-
         {name.trim() && (
-          <div style={{ padding:14, borderRadius:16,
-            background:'rgba(255,255,255,0.03)', border:'1px dashed rgba(255,255,255,0.1)',
-            marginBottom:16, animation:'slideUp .3s ease' }}>
-            <div style={{ fontSize:10, color:'rgba(255,255,255,0.4)', fontWeight:700,
-              letterSpacing:1.2, marginBottom:8 }}>PRÉVIA NO RANKING</div>
-            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-              <div style={{ width:28, height:28, borderRadius:14,
+          <div style={{padding:14,borderRadius:16,background:'rgba(255,255,255,0.03)',
+            border:'1px dashed rgba(255,255,255,0.1)',marginBottom:16,animation:'slideUp .3s ease'}}>
+            <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',fontWeight:700,
+              letterSpacing:1.2,marginBottom:8}}>PRÉVIA NO RANKING</div>
+            <div style={{display:'flex',alignItems:'center',gap:10}}>
+              <div style={{width:28,height:28,borderRadius:14,
                 background:'linear-gradient(135deg,#F472B6,#EC4899)',
-                display:'flex', alignItems:'center', justifyContent:'center',
-                fontSize:11, fontWeight:800 }}>{name.trim().charAt(0).toUpperCase()}</div>
-              <div style={{ fontSize:13, flex:1 }}>{name.trim()}</div>
+                display:'flex',alignItems:'center',justifyContent:'center',
+                fontSize:11,fontWeight:800}}>{name.trim().charAt(0).toUpperCase()}</div>
+              <div style={{fontSize:13,flex:1}}>{name.trim()}</div>
             </div>
           </div>
         )}
-
-        <div style={{ marginTop:'auto', paddingBottom:28 }}>
+        <div style={{marginTop:'auto',paddingBottom:28}}>
           <GradBtn onClick={onNext} disabled={!name.trim()}>Próximo →</GradBtn>
         </div>
       </div>
@@ -280,59 +442,48 @@ function NameScreen({ name, setName, onNext, onBack }) {
 function GenderScreen({ team, setTeam, onNext, onBack }) {
   return (
     <BoldFrame step={2} onBack={onBack}>
-      <div className="screen" style={{ display:'flex', flexDirection:'column', flex:1 }}>
+      <div className="screen" style={{display:'flex',flexDirection:'column',flex:1}}>
         <StepLabel n="02" label="SEU PALPITE" />
-        <div style={{ fontSize:36, fontWeight:900, letterSpacing:-1.4, lineHeight:1,
-          marginBottom:4, fontStyle:'italic' }}>Team</div>
-        <div style={{ fontSize:56, fontWeight:900, letterSpacing:-2.2, lineHeight:.9,
-          marginBottom:10, fontStyle:'italic', transition:'all .3s',
-          background: team==='boy'
-            ? 'linear-gradient(90deg,#60A5FA,#2563EB)'
-            : 'linear-gradient(90deg,#F472B6,#EC4899)',
-          WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}>
-          {team==='boy' ? 'BOY?' : 'GIRL?'}
+        <div style={{fontSize:36,fontWeight:900,letterSpacing:-1.4,lineHeight:1,
+          marginBottom:4,fontStyle:'italic'}}>Team</div>
+        <div style={{ fontSize:56,fontWeight:900,letterSpacing:-2.2,lineHeight:.9,
+          marginBottom:10,fontStyle:'italic',transition:'all .3s',
+          background:team==='boy'?'linear-gradient(90deg,#60A5FA,#2563EB)':'linear-gradient(90deg,#F472B6,#EC4899)',
+          WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent' }}>
+          {team==='boy'?'BOY?':'GIRL?'}
         </div>
-
-        <div style={{ display:'inline-flex', alignSelf:'flex-start', alignItems:'center', gap:6,
-          padding:'5px 11px', borderRadius:999,
-          background:'rgba(252,211,77,0.12)', border:'1px solid rgba(252,211,77,0.3)',
-          color:'#FCD34D', fontSize:11, fontWeight:700, marginBottom:20 }}>
+        <div style={{display:'inline-flex',alignSelf:'flex-start',alignItems:'center',gap:6,
+          padding:'5px 11px',borderRadius:999,background:'rgba(252,211,77,0.12)',
+          border:'1px solid rgba(252,211,77,0.3)',color:'#FCD34D',fontSize:11,fontWeight:700,marginBottom:20}}>
           🍷 {PARTY.prize}
         </div>
-
-        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-          {['boy','girl'].map((g) => {
-            const active = team === g;
-            const grad = g==='boy'
-              ? 'linear-gradient(90deg,#60A5FA,#2563EB)'
-              : 'linear-gradient(90deg,#F472B6,#EC4899)';
+        <div style={{display:'flex',flexDirection:'column',gap:10}}>
+          {['boy','girl'].map(g => {
+            const active = team===g;
+            const grad = g==='boy'?'linear-gradient(90deg,#60A5FA,#2563EB)':'linear-gradient(90deg,#F472B6,#EC4899)';
             return (
-              <div key={g} onClick={() => setTeam(g)} style={{
-                height:78, borderRadius:20, padding:'0 18px',
-                display:'flex', alignItems:'center', gap:12,
-                background: active ? grad : 'rgba(255,255,255,0.06)',
-                border:'1px solid '+(active ? 'transparent' : 'rgba(255,255,255,0.12)'),
-                transition:'all .2s', color:'#fff', cursor:'pointer',
-              }}>
-                <div style={{ fontSize:32 }}>{g==='boy' ? '👦' : '👧'}</div>
-                <div style={{ fontSize:19, fontWeight:800, flex:1, letterSpacing:-0.3, fontStyle:'italic' }}>
-                  TEAM {g==='boy' ? 'BOY' : 'GIRL'}
+              <div key={g} onClick={()=>setTeam(g)} style={{
+                height:78,borderRadius:20,padding:'0 18px',
+                display:'flex',alignItems:'center',gap:12,
+                background:active?grad:'rgba(255,255,255,0.06)',
+                border:'1px solid '+(active?'transparent':'rgba(255,255,255,0.12)'),
+                transition:'all .2s',color:'#fff',cursor:'pointer' }}>
+                <div style={{fontSize:32}}>{g==='boy'?'👦':'👧'}</div>
+                <div style={{fontSize:19,fontWeight:800,flex:1,letterSpacing:-0.3,fontStyle:'italic'}}>
+                  TEAM {g==='boy'?'BOY':'GIRL'}
                 </div>
-                <div style={{
-                  width:24, height:24, borderRadius:12,
-                  border:'2px solid '+(active ? '#fff' : 'rgba(255,255,255,0.3)'),
-                  background: active ? '#fff' : 'transparent',
-                  display:'flex', alignItems:'center', justifyContent:'center',
-                }}>
-                  {active && <div style={{ width:10, height:10, borderRadius:5,
-                    background: g==='boy' ? '#2563EB' : '#EC4899' }} />}
+                <div style={{ width:24,height:24,borderRadius:12,
+                  border:'2px solid '+(active?'#fff':'rgba(255,255,255,0.3)'),
+                  background:active?'#fff':'transparent',
+                  display:'flex',alignItems:'center',justifyContent:'center' }}>
+                  {active&&<div style={{width:10,height:10,borderRadius:5,
+                    background:g==='boy'?'#2563EB':'#EC4899'}}/>}
                 </div>
               </div>
             );
           })}
         </div>
-
-        <div style={{ marginTop:'auto', paddingBottom:28 }}>
+        <div style={{marginTop:'auto',paddingBottom:28}}>
           <GradBtn onClick={onNext}>Travar palpite →</GradBtn>
         </div>
       </div>
@@ -342,72 +493,51 @@ function GenderScreen({ team, setTeam, onNext, onBack }) {
 
 // ─── TELA 4: VALOR ───────────────────────────────────────────────────────────
 function AmountScreen({ amount, setAmount, onNext, onBack }) {
-  const presets = [50, 100, 200, 500];
-
   const handleKey = (k) => {
-    if (k === '⌫') {
-      setAmount(prev => {
-        const s = String(prev);
-        const next = s.length > 1 ? Number(s.slice(0, -1)) : 0;
-        return next;
-      });
-    } else if (k === '.') {
-      // ignore decimals for simplicity
-    } else {
-      setAmount(prev => {
-        const next = Number(String(prev === 0 ? '' : prev) + k);
-        return next > 99999 ? prev : next;
-      });
+    if (k==='⌫') {
+      setAmount(prev => { const s=String(prev); return s.length>1?Number(s.slice(0,-1)):0; });
+    } else if (k!=='.') {
+      setAmount(prev => { const n=Number(String(prev===0?'':prev)+k); return n>99999?prev:n; });
     }
   };
-
   return (
     <BoldFrame step={3} onBack={onBack}>
-      <div className="screen" style={{ display:'flex', flexDirection:'column', flex:1 }}>
+      <div className="screen" style={{display:'flex',flexDirection:'column',flex:1}}>
         <StepLabel n="03" label="A APOSTA" />
-        <div style={{ fontSize:36, fontWeight:900, letterSpacing:-1.4, lineHeight:1,
-          marginBottom:4, fontStyle:'italic' }}>Quanto vai<br/>apostar?</div>
-
-        <div style={{ padding:'12px 0 4px', display:'flex', alignItems:'baseline',
-          justifyContent:'center', gap:6 }}>
-          <span style={{ fontSize:22, fontWeight:800, color:'rgba(255,255,255,0.6)', fontStyle:'italic' }}>R$</span>
-          <span style={{ fontSize:80, fontWeight:900, letterSpacing:-3.5, lineHeight:.9,
-            fontStyle:'italic', fontVariantNumeric:'tabular-nums',
+        <div style={{fontSize:36,fontWeight:900,letterSpacing:-1.4,lineHeight:1,
+          marginBottom:4,fontStyle:'italic'}}>Quanto vai<br/>apostar?</div>
+        <div style={{padding:'12px 0 4px',display:'flex',alignItems:'baseline',
+          justifyContent:'center',gap:6}}>
+          <span style={{fontSize:22,fontWeight:800,color:'rgba(255,255,255,0.6)',fontStyle:'italic'}}>R$</span>
+          <span style={{fontSize:80,fontWeight:900,letterSpacing:-3.5,lineHeight:.9,
+            fontStyle:'italic',fontVariantNumeric:'tabular-nums',
             background:'linear-gradient(135deg,#60A5FA 0%,#F472B6 50%,#FB923C 100%)',
-            WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}>{amount || 0}</span>
+            WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>{amount||0}</span>
         </div>
-        <div style={{ textAlign:'center', fontSize:11, color:'rgba(255,255,255,0.55)',
-          marginBottom:12, lineHeight:1.4 }}>
-          🍷 Maior aposta <b style={{ color:'#fff' }}>+</b> sorteio entre acertadores levam o vinho
+        <div style={{textAlign:'center',fontSize:11,color:'rgba(255,255,255,0.55)',
+          marginBottom:12,lineHeight:1.4}}>
+          🍷 Maior aposta <b style={{color:'#fff'}}>+</b> sorteio entre acertadores levam o vinho
         </div>
-
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:10 }}>
-          {presets.map((v) => {
-            const active = amount === v;
-            return (
-              <button key={v} onClick={() => setAmount(v)} style={{
-                height:42, borderRadius:14,
-                background: active ? 'linear-gradient(90deg,#EC4899,#F97316)' : 'rgba(255,255,255,0.06)',
-                color:'#fff', border: active ? 'none' : '1px solid rgba(255,255,255,0.12)',
-                fontSize:14, fontWeight:800, fontFamily:'inherit', fontStyle:'italic',
-              }}>R${v}</button>
-            );
-          })}
-        </div>
-
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:2, marginBottom:8 }}>
-          {[1,2,3,4,5,6,7,8,9,'.',0,'⌫'].map((k, i) => (
-            <div key={i} onClick={() => handleKey(k)} style={{
-              height:44, display:'flex', alignItems:'center', justifyContent:'center',
-              fontSize: k === '⌫' ? 18 : 20, fontWeight:600,
-              color: k === '⌫' ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.85)',
-              cursor:'pointer', userSelect:'none',
-            }}>{k}</div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:10}}>
+          {[50,100,200,500].map(v => (
+            <button key={v} onClick={()=>setAmount(v)} style={{
+              height:42,borderRadius:14,
+              background:amount===v?'linear-gradient(90deg,#EC4899,#F97316)':'rgba(255,255,255,0.06)',
+              color:'#fff',border:amount===v?'none':'1px solid rgba(255,255,255,0.12)',
+              fontSize:14,fontWeight:800,fontFamily:'inherit',fontStyle:'italic' }}>R${v}</button>
           ))}
         </div>
-
-        <div style={{ paddingBottom:22, marginTop:'auto' }}>
-          <GradBtn onClick={onNext} disabled={!amount || amount <= 0}>Gerar Pix ⚡</GradBtn>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:2,marginBottom:8}}>
+          {[1,2,3,4,5,6,7,8,9,'.',0,'⌫'].map((k,i) => (
+            <div key={i} onClick={()=>handleKey(k)} style={{
+              height:44,display:'flex',alignItems:'center',justifyContent:'center',
+              fontSize:k==='⌫'?18:20,fontWeight:600,
+              color:k==='⌫'?'rgba(255,255,255,0.5)':'rgba(255,255,255,0.85)',
+              cursor:'pointer',userSelect:'none' }}>{k}</div>
+          ))}
+        </div>
+        <div style={{paddingBottom:22,marginTop:'auto'}}>
+          <GradBtn onClick={onNext} disabled={!amount||amount<=0}>Gerar Pix ⚡</GradBtn>
         </div>
       </div>
     </BoldFrame>
@@ -415,7 +545,7 @@ function AmountScreen({ amount, setAmount, onNext, onBack }) {
 }
 
 // ─── TELA 5: PIX ─────────────────────────────────────────────────────────────
-function PixScreen({ name, team, amount, betId, onConfirm, onBack, loading }) {
+function PixScreen({ name, team, amount, onConfirm, onBack, loading }) {
   const [copied, setCopied] = React.useState(false);
   const [readyTick, setReadyTick] = React.useState(false);
 
@@ -425,116 +555,89 @@ function PixScreen({ name, team, amount, betId, onConfirm, onBack, loading }) {
     return () => clearTimeout(t);
   }, [copied]);
 
-  const onCopy = () => {
-    const text = PARTY.pixCode;
-    if (navigator.clipboard && window.isSecureContext) {
-      navigator.clipboard.writeText(text).then(() => setCopied(true)).catch(() => legacyCopy(text));
-    } else {
-      legacyCopy(text);
-    }
-  };
-
-  const legacyCopy = (text) => {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;';
-    document.body.appendChild(ta);
-    ta.focus(); ta.select();
-    try { document.execCommand('copy'); } catch(e) {}
-    document.body.removeChild(ta);
-    setCopied(true);
-  };
+  const onCopy = () => copyText(PARTY.pixCode).then(() => setCopied(true));
 
   return (
     <BoldFrame step={4} onBack={onBack}>
-      <div className="screen" style={{ display:'flex', flexDirection:'column', flex:1 }}>
+      <div className="screen" style={{display:'flex',flexDirection:'column',flex:1}}>
         <StepLabel n="04" label="PIX COPIA E COLA" />
-        <div style={{ fontSize:32, fontWeight:900, letterSpacing:-1.2, lineHeight:1,
-          marginBottom:6, fontStyle:'italic' }}>Copia, cola,<br/>apostou.</div>
-        <div style={{ fontSize:12, color:'rgba(255,255,255,0.6)', marginBottom:12 }}>
-          Chave Pix de <b style={{ color:'#fff' }}>{PARTY.parents}</b>
+        <div style={{fontSize:32,fontWeight:900,letterSpacing:-1.2,lineHeight:1,
+          marginBottom:6,fontStyle:'italic'}}>Copia, cola,<br/>apostou.</div>
+        <div style={{fontSize:12,color:'rgba(255,255,255,0.6)',marginBottom:12}}>
+          Chave Pix de <b style={{color:'#fff'}}>{PARTY.parents}</b>
         </div>
-
-        <div style={{ background:'rgba(255,255,255,0.06)', borderRadius:20,
-          padding:12, border:'1px solid rgba(255,255,255,0.12)',
-          display:'flex', gap:12, alignItems:'center', marginBottom:10 }}>
-          <div style={{ width:72, height:72, borderRadius:10, background:'#fff',
+        <div style={{background:'rgba(255,255,255,0.06)',borderRadius:20,
+          padding:12,border:'1px solid rgba(255,255,255,0.12)',
+          display:'flex',gap:12,alignItems:'center',marginBottom:10}}>
+          <div style={{width:72,height:72,borderRadius:10,background:'#fff',
             backgroundImage:'linear-gradient(45deg,#0F0F23 25%,transparent 25%),linear-gradient(-45deg,#0F0F23 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#0F0F23 75%),linear-gradient(-45deg,transparent 75%,#0F0F23 75%)',
-            backgroundSize:'7px 7px', backgroundPosition:'0 0,0 3.5px,3.5px -3.5px,-3.5px 0px',
-            position:'relative', flexShrink:0 }}>
-            <div style={{ position:'absolute', inset:'35% 35%',
+            backgroundSize:'7px 7px',backgroundPosition:'0 0,0 3.5px,3.5px -3.5px,-3.5px 0px',
+            position:'relative',flexShrink:0}}>
+            <div style={{position:'absolute',inset:'35% 35%',
               background:'linear-gradient(135deg,#2563EB,#EC4899,#F97316)',
-              borderRadius:6, boxShadow:'0 0 0 3px #fff' }} />
+              borderRadius:6,boxShadow:'0 0 0 3px #fff'}}/>
           </div>
-          <div style={{ flex:1, minWidth:0 }}>
-            <div style={{ fontSize:10, color:'rgba(255,255,255,0.5)', marginBottom:2 }}>
-              TEAM {team==='boy' ? 'BOY · 👦' : 'GIRL · 👧'} · {name.split(' ')[0].toUpperCase()}
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:10,color:'rgba(255,255,255,0.5)',marginBottom:2}}>
+              TEAM {team==='boy'?'BOY · 👦':'GIRL · 👧'} · {name.split(' ')[0].toUpperCase()}
             </div>
-            <div style={{ fontSize:26, fontWeight:900, letterSpacing:-1, lineHeight:1,
-              fontStyle:'italic' }}>{fmt(amount)}</div>
-            <div style={{ fontSize:10, color:'#FCD34D', marginTop:4 }}>BabyBank</div>
+            <div style={{fontSize:26,fontWeight:900,letterSpacing:-1,lineHeight:1,fontStyle:'italic'}}>
+              {fmt(amount)}
+            </div>
+            <div style={{fontSize:10,color:'#FCD34D',marginTop:4}}>BabyBank</div>
           </div>
         </div>
-
-        <div style={{ background:'linear-gradient(135deg,rgba(37,99,235,.2),rgba(236,72,153,.2),rgba(249,115,22,.2))',
-          borderRadius:16, padding:2, marginBottom:10 }}>
-          <div style={{ background:'#0F0F23', borderRadius:14, padding:'10px 12px',
-            display:'flex', alignItems:'center', gap:10 }}>
-            <div style={{ flex:1, fontSize:10, color:'rgba(255,255,255,0.7)',
+        <div style={{background:'linear-gradient(135deg,rgba(37,99,235,.2),rgba(236,72,153,.2),rgba(249,115,22,.2))',
+          borderRadius:16,padding:2,marginBottom:10}}>
+          <div style={{background:'#0F0F23',borderRadius:14,padding:'10px 12px',
+            display:'flex',alignItems:'center',gap:10}}>
+            <div style={{flex:1,fontSize:10,color:'rgba(255,255,255,0.7)',
               fontFamily:'ui-monospace,monospace',
-              whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+              whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
               {PARTY.pixCode}
             </div>
             <div onClick={onCopy} style={{
-              height:30, padding:'0 12px', borderRadius:10,
-              background: copied ? 'rgba(34,197,94,0.2)' : 'linear-gradient(90deg,#EC4899,#F97316)',
-              color: copied ? '#86EFAC' : '#fff',
-              fontSize:11, fontWeight:800,
-              display:'flex', alignItems:'center', gap:5,
-              border: copied ? '1px solid rgba(134,239,172,.35)' : 'none',
-              cursor:'pointer', userSelect:'none', flexShrink:0,
-            }}>{copied ? '✓ COPIADO' : 'COPIAR'}</div>
+              height:30,padding:'0 12px',borderRadius:10,
+              background:copied?'rgba(34,197,94,0.2)':'linear-gradient(90deg,#EC4899,#F97316)',
+              color:copied?'#86EFAC':'#fff',fontSize:11,fontWeight:800,
+              display:'flex',alignItems:'center',gap:5,
+              border:copied?'1px solid rgba(134,239,172,.35)':'none',
+              cursor:'pointer',userSelect:'none',flexShrink:0 }}>
+              {copied?'✓ COPIADO':'COPIAR'}
+            </div>
           </div>
         </div>
-
-        <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px',
-          borderRadius:12, background:'rgba(252,211,77,0.1)', border:'1px solid rgba(252,211,77,0.25)',
-          marginBottom:'auto' }}>
-          <div style={{ fontSize:13 }}>⚡</div>
-          <div style={{ fontSize:11, color:'rgba(252,211,77,0.9)', lineHeight:1.35 }}>
+        <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',
+          borderRadius:12,background:'rgba(252,211,77,0.1)',border:'1px solid rgba(252,211,77,0.25)',
+          marginBottom:'auto'}}>
+          <div style={{fontSize:13}}>⚡</div>
+          <div style={{fontSize:11,color:'rgba(252,211,77,0.9)',lineHeight:1.35}}>
             <b>Cola no seu banco</b>, paga, e volte aqui para confirmar.
           </div>
         </div>
-
-        <div style={{ paddingBottom:28, paddingTop:10 }}>
+        <div style={{paddingBottom:28,paddingTop:10}}>
           {loading ? (
-            <div style={{ width:'100%', height:58, borderRadius:20,
-              background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.1)',
-              display:'flex', alignItems:'center', justifyContent:'center', gap:10,
-              color:'rgba(255,255,255,0.55)', fontSize:13, fontWeight:600 }}>
-              <div style={{ width:16, height:16, borderRadius:8,
-                border:'2px solid rgba(255,255,255,0.2)', borderTopColor:'#FCD34D',
-                animation:'spin 1s linear infinite' }} />
-              Registrando aposta…
+            <div style={{width:'100%',height:58,borderRadius:20,
+              background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.1)',
+              display:'flex',alignItems:'center',justifyContent:'center',gap:10,
+              color:'rgba(255,255,255,0.55)',fontSize:13,fontWeight:600}}>
+              <Spinner/> Registrando aposta…
             </div>
           ) : readyTick ? (
             <button onClick={onConfirm} style={{
-              width:'100%', height:58, borderRadius:20, border:'none',
+              width:'100%',height:58,borderRadius:20,border:'none',
               background:'linear-gradient(90deg,#22C55E,#16A34A)',
-              color:'#fff', fontSize:18, fontWeight:800, letterSpacing:-0.3,
-              fontFamily:'inherit', fontStyle:'italic',
-              boxShadow:'0 12px 32px rgba(34,197,94,.4)',
-              animation:'slideUp .3s ease-out', cursor:'pointer',
-            }}>✓ Já fiz o Pix</button>
+              color:'#fff',fontSize:18,fontWeight:800,letterSpacing:-0.3,
+              fontFamily:'inherit',fontStyle:'italic',
+              boxShadow:'0 12px 32px rgba(34,197,94,.4)',animation:'slideUp .3s ease-out',cursor:'pointer'}}>
+              ✓ Já fiz o Pix
+            </button>
           ) : copied ? (
-            <div style={{ width:'100%', height:58, borderRadius:20,
-              background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.1)',
-              display:'flex', alignItems:'center', justifyContent:'center', gap:10,
-              color:'rgba(255,255,255,0.55)', fontSize:13, fontWeight:600 }}>
-              <div style={{ width:16, height:16, borderRadius:8,
-                border:'2px solid rgba(255,255,255,0.2)', borderTopColor:'#FCD34D',
-                animation:'spin 1s linear infinite' }} />
-              Abra seu banco e pague…
+            <div style={{width:'100%',height:58,borderRadius:20,
+              background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.1)',
+              display:'flex',alignItems:'center',justifyContent:'center',gap:10,
+              color:'rgba(255,255,255,0.55)',fontSize:13,fontWeight:600}}>
+              <Spinner/> Abra seu banco e pague…
             </div>
           ) : (
             <GradBtn onClick={onCopy}>Copiar código Pix ⚡</GradBtn>
@@ -548,245 +651,58 @@ function PixScreen({ name, team, amount, betId, onConfirm, onBack, loading }) {
 // ─── TELA 6: SUCESSO ─────────────────────────────────────────────────────────
 function SuccessScreen({ name, team, amount, onRanking }) {
   return (
-    <div className="screen" style={{ height:'100%', position:'relative', overflow:'hidden',
-      background:'#0F0F23', fontFamily:'inherit', color:'#fff' }}>
-      <Blobs />
-      <Confetti count={50} />
-      <div style={{ position:'relative', height:'100%', padding:'72px 24px 28px',
-        display:'flex', flexDirection:'column' }}>
-        <div style={{ fontSize:12, fontWeight:800, letterSpacing:2,
-          color:'#FCD34D', marginBottom:6 }}>● APOSTA CONFIRMADA</div>
-        <div style={{ fontSize:64, fontWeight:900, letterSpacing:-3, lineHeight:.85,
-          fontStyle:'italic',
-          background:'linear-gradient(135deg,#60A5FA,#F472B6,#FB923C)',
-          WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}>TÁ</div>
-        <div style={{ fontSize:64, fontWeight:900, letterSpacing:-3, lineHeight:.85,
-          fontStyle:'italic', marginBottom:14 }}>DENTRO!</div>
-
-        <div style={{ fontSize:14, color:'rgba(255,255,255,0.75)', lineHeight:1.4, marginBottom:14 }}>
-          <b style={{ color:'#fff' }}>{PARTY.eventDate}</b> saberemos quem leva o vinho 🍷
+    <div className="screen" style={{height:'100%',position:'relative',overflow:'hidden',
+      background:'#0F0F23',fontFamily:'inherit',color:'#fff'}}>
+      <Blobs/><Confetti count={50}/>
+      <div style={{position:'relative',height:'100%',padding:'72px 24px 28px',
+        display:'flex',flexDirection:'column'}}>
+        <div style={{fontSize:12,fontWeight:800,letterSpacing:2,color:'#FCD34D',marginBottom:6}}>
+          ● APOSTA CONFIRMADA
         </div>
-
-        <div style={{ background:'rgba(255,255,255,0.06)', borderRadius:18, padding:14,
-          marginBottom:12, border:'1px solid rgba(255,255,255,0.12)' }}>
-          <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
-            <span style={{ color:'rgba(255,255,255,0.6)', fontSize:12 }}>Seu palpite</span>
-            <span style={{ fontSize:13, fontWeight:800, fontStyle:'italic',
-              background: team==='boy'
-                ? 'linear-gradient(90deg,#60A5FA,#2563EB)'
-                : 'linear-gradient(90deg,#F472B6,#EC4899)',
-              WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}>
-              {team==='boy' ? '👦 TEAM BOY' : '👧 TEAM GIRL'}
+        <div style={{fontSize:64,fontWeight:900,letterSpacing:-3,lineHeight:.85,fontStyle:'italic',
+          background:'linear-gradient(135deg,#60A5FA,#F472B6,#FB923C)',
+          WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>TÁ</div>
+        <div style={{fontSize:64,fontWeight:900,letterSpacing:-3,lineHeight:.85,
+          fontStyle:'italic',marginBottom:14}}>DENTRO!</div>
+        <div style={{fontSize:14,color:'rgba(255,255,255,0.75)',lineHeight:1.4,marginBottom:14}}>
+          <b style={{color:'#fff'}}>{PARTY.eventDate}</b> saberemos quem leva o vinho 🍷
+        </div>
+        <div style={{background:'rgba(255,255,255,0.06)',borderRadius:18,padding:14,
+          marginBottom:12,border:'1px solid rgba(255,255,255,0.12)'}}>
+          <div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}>
+            <span style={{color:'rgba(255,255,255,0.6)',fontSize:12}}>Seu palpite</span>
+            <span style={{fontSize:13,fontWeight:800,fontStyle:'italic',
+              background:team==='boy'?'linear-gradient(90deg,#60A5FA,#2563EB)':'linear-gradient(90deg,#F472B6,#EC4899)',
+              WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>
+              {team==='boy'?'👦 TEAM BOY':'👧 TEAM GIRL'}
             </span>
           </div>
-          <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
-            <span style={{ color:'rgba(255,255,255,0.6)', fontSize:12 }}>Seu nome</span>
-            <span style={{ color:'#fff', fontSize:13, fontWeight:700 }}>{name}</span>
+          <div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}>
+            <span style={{color:'rgba(255,255,255,0.6)',fontSize:12}}>Seu nome</span>
+            <span style={{color:'#fff',fontSize:13,fontWeight:700}}>{name}</span>
           </div>
-          <div style={{ display:'flex', justifyContent:'space-between' }}>
-            <span style={{ color:'rgba(255,255,255,0.6)', fontSize:12 }}>Aposta</span>
-            <span style={{ color:'#fff', fontSize:13, fontWeight:700 }}>{fmt(amount)}</span>
-          </div>
-        </div>
-
-        <div style={{ padding:'10px 12px', borderRadius:12,
-          background:'rgba(252,211,77,0.1)', border:'1px solid rgba(252,211,77,0.25)',
-          marginBottom:14 }}>
-          <div style={{ fontSize:11, color:'rgba(252,211,77,0.9)', lineHeight:1.4 }}>
-            🍷 Maior apostador + sorteio entre quem acertou o time ganham <b style={{ color:'#FCD34D' }}>{PARTY.prize}</b>
+          <div style={{display:'flex',justifyContent:'space-between'}}>
+            <span style={{color:'rgba(255,255,255,0.6)',fontSize:12}}>Aposta</span>
+            <span style={{color:'#fff',fontSize:13,fontWeight:700}}>{fmt(amount)}</span>
           </div>
         </div>
-
-        <div style={{ display:'flex', flexDirection:'column', gap:8, marginTop:'auto' }}>
+        <div style={{padding:'10px 12px',borderRadius:12,
+          background:'rgba(252,211,77,0.1)',border:'1px solid rgba(252,211,77,0.25)',marginBottom:14}}>
+          <div style={{fontSize:11,color:'rgba(252,211,77,0.9)',lineHeight:1.4}}>
+            🍷 Maior apostador + sorteio entre quem acertou ganham{' '}
+            <b style={{color:'#FCD34D'}}>{PARTY.prize}</b>
+          </div>
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:8,marginTop:'auto'}}>
           <button onClick={onRanking} style={{
-            width:'100%', height:50, borderRadius:16, border:'none',
+            width:'100%',height:50,borderRadius:16,border:'none',
             background:'linear-gradient(90deg,#2563EB,#EC4899,#F97316)',
-            color:'#fff', fontSize:14, fontWeight:800, letterSpacing:-0.2,
-            fontFamily:'inherit', fontStyle:'italic',
-            boxShadow:'0 10px 28px rgba(236,72,153,.4)', cursor:'pointer',
-          }}>Ver ranking ao vivo →</button>
+            color:'#fff',fontSize:14,fontWeight:800,letterSpacing:-0.2,
+            fontFamily:'inherit',fontStyle:'italic',
+            boxShadow:'0 10px 28px rgba(236,72,153,.4)',cursor:'pointer'}}>
+            Ver ranking ao vivo →
+          </button>
         </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── SHARE: geração de imagem canvas ─────────────────────────────────────────
-function rrect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x+r, y);
-  ctx.lineTo(x+w-r, y); ctx.quadraticCurveTo(x+w, y, x+w, y+r);
-  ctx.lineTo(x+w, y+h-r); ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
-  ctx.lineTo(x+r, y+h); ctx.quadraticCurveTo(x, y+h, x, y+h-r);
-  ctx.lineTo(x, y+r); ctx.quadraticCurveTo(x, y, x+r, y);
-  ctx.closePath();
-}
-
-function generateShareCard(name, team) {
-  const W = 1080, H = 1920;
-  const cv = document.createElement('canvas');
-  cv.width = W; cv.height = H;
-  const c = cv.getContext('2d');
-
-  // fundo gradiente
-  const g = c.createLinearGradient(0, 0, W, H);
-  if (team === 'boy') {
-    g.addColorStop(0, '#1e3a8a'); g.addColorStop(0.5, '#2563EB'); g.addColorStop(1, '#60A5FA');
-  } else {
-    g.addColorStop(0, '#831843'); g.addColorStop(0.5, '#EC4899'); g.addColorStop(1, '#F472B6');
-  }
-  c.fillStyle = g; c.fillRect(0, 0, W, H);
-
-  // overlay escuro suave no topo e base
-  const top = c.createLinearGradient(0,0,0,400);
-  top.addColorStop(0,'rgba(0,0,0,0.45)'); top.addColorStop(1,'rgba(0,0,0,0)');
-  c.fillStyle = top; c.fillRect(0,0,W,400);
-  const bot = c.createLinearGradient(0,H-500,0,H);
-  bot.addColorStop(0,'rgba(0,0,0,0)'); bot.addColorStop(1,'rgba(0,0,0,0.5)');
-  c.fillStyle = bot; c.fillRect(0,H-500,W,500);
-
-  // pontos decorativos
-  const dots = [{x:900,y:160,r:80},{x:120,y:H-200,r:60},{x:950,y:H-350,r:100},{x:200,y:600,r:40}];
-  dots.forEach(d => {
-    c.fillStyle = 'rgba(255,255,255,0.08)';
-    c.beginPath(); c.arc(d.x,d.y,d.r,0,Math.PI*2); c.fill();
-  });
-
-  // tag topo
-  c.fillStyle = 'rgba(255,255,255,0.18)';
-  rrect(c, 80, 160, 360, 62, 31); c.fill();
-  c.fillStyle = '#fff';
-  c.font = `bold 28px -apple-system, Arial, sans-serif`;
-  c.fillText(`● BETBABY · ${PARTY.date}`, 116, 202);
-
-  // texto principal
-  c.fillStyle = '#fff';
-  c.font = `900 italic 200px -apple-system, Arial, sans-serif`;
-  c.fillText('EU', 80, 580);
-  c.font = `900 italic 150px -apple-system, Arial, sans-serif`;
-  c.fillText('APOSTEI', 80, 760);
-
-  // team
-  const teamLabel = team === 'boy' ? 'MENINO!' : 'MENINA!';
-  const teamEmoji = team === 'boy' ? '👦' : '👧';
-  c.font = `900 italic 130px -apple-system, Arial, sans-serif`;
-  c.fillStyle = 'rgba(255,255,255,0.92)';
-  c.fillText(teamLabel, 80, 920);
-  c.font = `110px -apple-system, Arial, sans-serif`;
-  c.fillText(teamEmoji, 80, 1055);
-
-  // subtítulo
-  c.font = `48px -apple-system, Arial, sans-serif`;
-  c.fillStyle = 'rgba(255,255,255,0.82)';
-  c.fillText(`do ${PARTY.babyName}`, 80, 1130);
-
-  // nome do apostador
-  c.font = `bold 52px -apple-system, Arial, sans-serif`;
-  c.fillStyle = 'rgba(255,255,255,0.6)';
-  c.fillText(name, 80, 1200);
-
-  // card inferior
-  c.fillStyle = 'rgba(255,255,255,0.15)';
-  rrect(c, 80, H-320, W-160, 200, 32); c.fill();
-  c.strokeStyle = 'rgba(255,255,255,0.25)';
-  c.lineWidth = 2;
-  rrect(c, 80, H-320, W-160, 200, 32); c.stroke();
-
-  c.fillStyle = 'rgba(255,255,255,0.75)';
-  c.font = `40px -apple-system, Arial, sans-serif`;
-  c.fillText('E você, chuta o quê?', 120, H-255);
-  c.fillStyle = '#fff';
-  c.font = `bold 52px -apple-system, Arial, sans-serif`;
-  c.fillText('betbaby.app/sorato  →', 120, H-185);
-
-  return cv;
-}
-
-async function doShare(name, team) {
-  const cv = generateShareCard(name, team);
-  return new Promise((resolve) => {
-    cv.toBlob(async (blob) => {
-      const file = new File([blob], 'bet-revelacao.png', { type: 'image/png' });
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        try {
-          await navigator.share({ files: [file], title: 'BET Revelação',
-            text: `Apostei no chá revelação do ${PARTY.babyName}!` });
-        } catch(e) { if (e.name !== 'AbortError') downloadBlob(blob); }
-      } else {
-        downloadBlob(blob);
-      }
-      resolve();
-    }, 'image/png');
-  });
-}
-
-function downloadBlob(blob) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = 'bet-revelacao.png'; a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-// Modal de compartilhamento
-function ShareModal({ name, team, onClose }) {
-  const [preview, setPreview] = React.useState(null);
-  const [sharing, setSharing] = React.useState(false);
-
-  React.useEffect(() => {
-    const cv = generateShareCard(name, team);
-    setPreview(cv.toDataURL('image/png'));
-  }, [name, team]);
-
-  const handle = async () => {
-    setSharing(true);
-    await doShare(name, team);
-    setSharing(false);
-  };
-
-  return (
-    <div style={{ position:'absolute', inset:0, zIndex:100,
-      background:'rgba(0,0,0,0.85)', display:'flex', flexDirection:'column',
-      padding:'24px 18px', animation:'fadeIn .2s ease' }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
-        <div style={{ fontSize:16, fontWeight:700, color:'#fff' }}>Compartilhar</div>
-        <div onClick={onClose} style={{ width:30, height:30, borderRadius:15,
-          background:'rgba(255,255,255,0.12)', display:'flex', alignItems:'center',
-          justifyContent:'center', fontSize:16, color:'#fff', cursor:'pointer' }}>✕</div>
-      </div>
-
-      {/* preview da imagem */}
-      <div style={{ flex:1, borderRadius:22, overflow:'hidden',
-        boxShadow:'0 24px 60px rgba(236,72,153,0.4)', marginBottom:16 }}>
-        {preview
-          ? <img src={preview} style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }} />
-          : <div style={{ width:'100%', height:'100%', background:'#1a1a2e',
-              display:'flex', alignItems:'center', justifyContent:'center',
-              color:'rgba(255,255,255,0.4)', fontSize:14 }}>Gerando...</div>
-        }
-      </div>
-
-      <div style={{ display:'flex', gap:8 }}>
-        <button onClick={handle} disabled={sharing || !preview} style={{
-          flex:2, height:52, borderRadius:16, border:'none',
-          background: sharing ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg,#F58529,#DD2A7B,#8134AF,#515BD4)',
-          color: sharing ? 'rgba(255,255,255,0.4)' : '#fff',
-          fontSize:14, fontWeight:800, fontFamily:'inherit',
-          display:'flex', alignItems:'center', justifyContent:'center', gap:8,
-          cursor: sharing ? 'default' : 'pointer',
-        }}>
-          {sharing
-            ? <><div style={{ width:14,height:14,borderRadius:7,border:'2px solid rgba(255,255,255,0.3)',
-                borderTopColor:'#fff',animation:'spin 1s linear infinite' }} /> Compartilhando...</>
-            : '📸 Compartilhar / Salvar'}
-        </button>
-        <button onClick={onClose} style={{
-          flex:1, height:52, borderRadius:16, border:'1px solid rgba(255,255,255,0.15)',
-          background:'rgba(255,255,255,0.06)', color:'rgba(255,255,255,0.7)',
-          fontSize:13, fontWeight:700, fontFamily:'inherit', cursor:'pointer',
-        }}>Fechar</button>
-      </div>
-      <div style={{ textAlign:'center', fontSize:11, color:'rgba(255,255,255,0.4)', marginTop:8 }}>
-        No celular abre o menu de apps · No computador salva a imagem
       </div>
     </div>
   );
@@ -794,173 +710,154 @@ function ShareModal({ name, team, onClose }) {
 
 // ─── TELA 7: RANKING ─────────────────────────────────────────────────────────
 function RankingScreen({ bets, myBetId, appState, onBack, name, team, onShare }) {
+  const [sharing, setSharing] = React.useState(false);
   const total = bets.length;
-  const boyCount = bets.filter(b => b.team === 'boy').length;
-  const girlCount = bets.filter(b => b.team === 'girl').length;
-  const boyPct = total > 0 ? Math.round((boyCount/total)*100) : 50;
-  const girlPct = 100 - boyPct;
+  const boyCount = bets.filter(b=>b.team==='boy').length;
+  const boyPct = total>0?Math.round((boyCount/total)*100):50;
+  const girlPct = 100-boyPct;
+  const sorted = [...bets].sort((a,b)=>b.amount-a.amount);
+  const { revealed, winners } = appState||{};
 
-  const sorted = [...bets].sort((a,b) => b.amount - a.amount);
-
-  const revealed = appState?.revealed;
-  const winners = appState?.winners;
+  const handleShare = async () => {
+    setSharing(true);
+    await onShare();
+    setSharing(false);
+  };
 
   return (
-    <div className="screen" style={{ height:'100%', position:'relative', overflow:'hidden',
-      background:'#0F0F23', fontFamily:'inherit', color:'#fff' }}>
-      <div style={{ position:'absolute', top:-100, right:-80, width:280, height:280,
-        borderRadius:'50%', opacity:.4,
-        background:'radial-gradient(circle,#EC4899 0%,transparent 70%)', filter:'blur(50px)' }} />
-      <div style={{ position:'absolute', bottom:-80, left:-60, width:240, height:240,
-        borderRadius:'50%', opacity:.3,
-        background:'radial-gradient(circle,#2563EB 0%,transparent 70%)', filter:'blur(50px)' }} />
+    <div className="screen" style={{height:'100%',position:'relative',overflow:'hidden',
+      background:'#0F0F23',fontFamily:'inherit',color:'#fff'}}>
+      <div style={{position:'absolute',top:-100,right:-80,width:280,height:280,borderRadius:'50%',
+        opacity:.4,background:'radial-gradient(circle,#EC4899 0%,transparent 70%)',filter:'blur(50px)'}}/>
+      <div style={{position:'absolute',bottom:-80,left:-60,width:240,height:240,borderRadius:'50%',
+        opacity:.3,background:'radial-gradient(circle,#2563EB 0%,transparent 70%)',filter:'blur(50px)'}}/>
 
-      <div style={{ position:'relative', height:'100%', padding:'56px 22px 22px',
-        display:'flex', flexDirection:'column' }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
-          <div onClick={onBack} style={{
-            width:36, height:36, borderRadius:18,
-            background:'rgba(255,255,255,0.1)', border:'1px solid rgba(255,255,255,0.15)',
-            display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer',
-          }}>
+      <div style={{position:'relative',height:'100%',padding:'56px 22px 16px',
+        display:'flex',flexDirection:'column'}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
+          <div onClick={onBack} style={{width:36,height:36,borderRadius:18,
+            background:'rgba(255,255,255,0.1)',border:'1px solid rgba(255,255,255,0.15)',
+            display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>
             <svg width="10" height="14" viewBox="0 0 10 16" fill="none">
               <path d="M8 2L2 8l6 6" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </div>
-          <div style={{ padding:'4px 10px', borderRadius:999,
-            background:'rgba(252,211,77,0.15)', border:'1px solid rgba(252,211,77,0.3)',
-            fontSize:10, fontWeight:800, letterSpacing:1, color:'#FCD34D' }}>● AO VIVO</div>
+          <div style={{padding:'4px 10px',borderRadius:999,
+            background:'rgba(252,211,77,0.15)',border:'1px solid rgba(252,211,77,0.3)',
+            fontSize:10,fontWeight:800,letterSpacing:1,color:'#FCD34D'}}>● AO VIVO</div>
         </div>
 
-        <div style={{ fontSize:12, fontWeight:800, letterSpacing:2,
+        <div style={{fontSize:12,fontWeight:800,letterSpacing:2,
           background:'linear-gradient(90deg,#60A5FA,#F472B6)',
-          WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', marginBottom:4 }}>
+          WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',marginBottom:4}}>
           RANKING · {PARTY.date}
         </div>
-        <div style={{ fontSize:28, fontWeight:900, letterSpacing:-1.2, lineHeight:1,
-          marginBottom:12, fontStyle:'italic' }}>Quem chuta<br/>melhor?</div>
+        <div style={{fontSize:26,fontWeight:900,letterSpacing:-1.2,lineHeight:1,
+          marginBottom:10,fontStyle:'italic'}}>Quem chuta<br/>melhor?</div>
 
-        {/* Barra boy vs girl */}
-        {total > 0 && (
-          <div style={{ display:'flex', height:32, borderRadius:10, overflow:'hidden',
-            marginBottom:8, border:'1px solid rgba(255,255,255,0.08)' }}>
-            <div style={{ flex:boyPct,
-              background:'linear-gradient(90deg,#60A5FA,#2563EB)',
-              display:'flex', alignItems:'center', justifyContent:'center', gap:5,
-              fontSize:11, fontWeight:800, fontStyle:'italic', minWidth: boyPct > 0 ? 40 : 0 }}>
-              {boyPct > 5 && `👦 ${boyPct}%`}
+        {total>0 && (
+          <div style={{display:'flex',height:30,borderRadius:10,overflow:'hidden',
+            marginBottom:8,border:'1px solid rgba(255,255,255,0.08)'}}>
+            <div style={{flex:boyPct,background:'linear-gradient(90deg,#60A5FA,#2563EB)',
+              display:'flex',alignItems:'center',justifyContent:'center',
+              fontSize:11,fontWeight:800,fontStyle:'italic',minWidth:boyPct>0?36:0}}>
+              {boyPct>5&&`👦 ${boyPct}%`}
             </div>
-            <div style={{ flex:girlPct,
-              background:'linear-gradient(90deg,#F472B6,#EC4899)',
-              display:'flex', alignItems:'center', justifyContent:'center', gap:5,
-              fontSize:11, fontWeight:800, fontStyle:'italic', minWidth: girlPct > 0 ? 40 : 0 }}>
-              {girlPct > 5 && `${girlPct}% 👧`}
+            <div style={{flex:girlPct,background:'linear-gradient(90deg,#F472B6,#EC4899)',
+              display:'flex',alignItems:'center',justifyContent:'center',
+              fontSize:11,fontWeight:800,fontStyle:'italic',minWidth:girlPct>0?36:0}}>
+              {girlPct>5&&`${girlPct}% 👧`}
             </div>
           </div>
         )}
 
-        {/* Revelação */}
         {revealed && (
-          <div style={{ padding:'10px 14px', borderRadius:12, marginBottom:8,
-            background: revealed==='boy'
-              ? 'rgba(37,99,235,0.2)'
-              : 'rgba(236,72,153,0.2)',
-            border: `1px solid ${revealed==='boy' ? 'rgba(96,165,250,0.4)' : 'rgba(244,114,182,0.4)'}`,
-            animation:'slideUp .4s ease' }}>
-            <div style={{ fontSize:12, fontWeight:800, color:'#FCD34D' }}>🎉 REVELAÇÃO</div>
-            <div style={{ fontSize:16, fontWeight:800, fontStyle:'italic', color:'#fff' }}>
-              É {revealed==='boy' ? 'MENINO! 👦' : 'MENINA! 👧'}
+          <div style={{padding:'8px 12px',borderRadius:10,marginBottom:6,animation:'slideUp .4s ease',
+            background:revealed==='boy'?'rgba(37,99,235,0.2)':'rgba(236,72,153,0.2)',
+            border:`1px solid ${revealed==='boy'?'rgba(96,165,250,0.4)':'rgba(244,114,182,0.4)'}`}}>
+            <div style={{fontSize:11,fontWeight:800,color:'#FCD34D'}}>🎉 REVELAÇÃO</div>
+            <div style={{fontSize:15,fontWeight:800,fontStyle:'italic'}}>
+              É {revealed==='boy'?'MENINO! 👦':'MENINA! 👧'}
             </div>
           </div>
         )}
 
-        {/* Ganhadores */}
         {winners && (
-          <div style={{ padding:'10px 14px', borderRadius:12, marginBottom:8,
-            background:'rgba(252,211,77,0.12)', border:'1px solid rgba(252,211,77,0.3)',
-            animation:'slideUp .4s ease' }}>
-            <div style={{ fontSize:11, fontWeight:800, color:'#FCD34D', marginBottom:4 }}>🍷 GANHADORES</div>
-            <div style={{ fontSize:12, color:'rgba(255,255,255,0.85)', lineHeight:1.5 }}>
-              {winners.highestBet && <div>💰 Maior aposta: <b style={{color:'#fff'}}>{winners.highestBet.name}</b></div>}
-              {winners.raffle && <div>🎲 Sorteio: <b style={{color:'#fff'}}>{winners.raffle.name}</b></div>}
-            </div>
+          <div style={{padding:'8px 12px',borderRadius:10,marginBottom:6,animation:'slideUp .4s ease',
+            background:'rgba(252,211,77,0.12)',border:'1px solid rgba(252,211,77,0.3)'}}>
+            <div style={{fontSize:11,fontWeight:800,color:'#FCD34D',marginBottom:2}}>🍷 GANHADORES</div>
+            {winners.highestBet&&<div style={{fontSize:11,color:'rgba(255,255,255,0.85)'}}>
+              💰 Maior aposta: <b style={{color:'#fff'}}>{winners.highestBet.name}</b></div>}
+            {winners.raffle&&<div style={{fontSize:11,color:'rgba(255,255,255,0.85)'}}>
+              🎲 Sorteio: <b style={{color:'#fff'}}>{winners.raffle.name}</b></div>}
           </div>
         )}
 
-        <div style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 10px',
-          borderRadius:10, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)',
-          marginBottom:10 }}>
-          <div style={{ fontSize:11, color:'rgba(255,255,255,0.55)', lineHeight:1.3 }}>
-            🔒 Valores borrados. Só você vê o seu.
-          </div>
+        <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:6}}>
+          🔒 Valores borrados — só você vê o seu.
         </div>
 
-        <div style={{ flex:1, display:'flex', flexDirection:'column', gap:5, overflowY:'auto' }}>
-          {sorted.length === 0 && (
-            <div style={{ textAlign:'center', color:'rgba(255,255,255,0.4)', fontSize:14,
-              padding:'40px 0', fontStyle:'italic' }}>Nenhuma aposta ainda...</div>
+        <div style={{flex:1,display:'flex',flexDirection:'column',gap:5,overflowY:'auto'}}>
+          {sorted.length===0 && (
+            <div style={{textAlign:'center',color:'rgba(255,255,255,0.4)',fontSize:14,
+              padding:'40px 0',fontStyle:'italic'}}>Nenhuma aposta ainda...</div>
           )}
-          {sorted.map((r, i) => {
-            const isMe = r.id === myBetId;
-            const teamGrad = r.team==='boy'
-              ? 'linear-gradient(135deg,#60A5FA,#2563EB)'
-              : 'linear-gradient(135deg,#F472B6,#EC4899)';
+          {sorted.map((r,i) => {
+            const isMe = r.id===myBetId;
+            const tg = r.team==='boy'?'linear-gradient(135deg,#60A5FA,#2563EB)':'linear-gradient(135deg,#F472B6,#EC4899)';
             return (
-              <div key={r.id} style={{
-                display:'flex', alignItems:'center', gap:10,
-                padding:'7px 10px', borderRadius:11,
-                background: isMe ? 'rgba(252,211,77,0.1)' : 'rgba(255,255,255,0.04)',
-                border:'1px solid '+(isMe ? 'rgba(252,211,77,0.3)' : 'rgba(255,255,255,0.06)'),
-                animation: isMe ? 'slideUp .3s ease' : 'none',
-              }}>
-                <div style={{ width:20, textAlign:'center', fontSize:11, fontWeight:700,
-                  color: i < 3 ? ['#FCD34D','#C0C0C0','#CD7F32'][i] : 'rgba(255,255,255,0.5)' }}>
-                  {i < 3 ? ['🥇','🥈','🥉'][i] : i+1}
+              <div key={r.id} style={{display:'flex',alignItems:'center',gap:10,
+                padding:'7px 10px',borderRadius:11,
+                background:isMe?'rgba(252,211,77,0.1)':'rgba(255,255,255,0.04)',
+                border:'1px solid '+(isMe?'rgba(252,211,77,0.3)':'rgba(255,255,255,0.06)')}}>
+                <div style={{width:20,textAlign:'center',fontSize:11,fontWeight:700,
+                  color:i<3?['#FCD34D','#C0C0C0','#CD7F32'][i]:'rgba(255,255,255,0.5)'}}>
+                  {i<3?['🥇','🥈','🥉'][i]:i+1}
                 </div>
-                <div style={{ width:26, height:26, borderRadius:13, background:teamGrad,
-                  display:'flex', alignItems:'center', justifyContent:'center',
-                  fontSize:11, fontWeight:800, flexShrink:0 }}>
+                <div style={{width:26,height:26,borderRadius:13,background:tg,
+                  display:'flex',alignItems:'center',justifyContent:'center',
+                  fontSize:11,fontWeight:800,flexShrink:0}}>
                   {r.name.charAt(0).toUpperCase()}
                 </div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:12, fontWeight:600,
-                    whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
-                    {r.name} {isMe && <span style={{ color:'#FCD34D', fontSize:9, marginLeft:4 }}>VOCÊ</span>}
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12,fontWeight:600,whiteSpace:'nowrap',
+                    overflow:'hidden',textOverflow:'ellipsis'}}>
+                    {r.name} {isMe&&<span style={{color:'#FCD34D',fontSize:9,marginLeft:4}}>VOCÊ</span>}
                   </div>
-                  <div style={{ fontSize:9, color:'rgba(255,255,255,0.45)' }}>
-                    Team {r.team==='boy' ? 'Boy 👦' : 'Girl 👧'}
+                  <div style={{fontSize:9,color:'rgba(255,255,255,0.45)'}}>
+                    Team {r.team==='boy'?'Boy 👦':'Girl 👧'}
                   </div>
                 </div>
-                <div style={{ fontSize:11, fontWeight:800,
-                  filter: isMe ? 'none' : 'blur(5px)',
-                  color: isMe ? '#FCD34D' : 'rgba(255,255,255,0.85)',
-                  userSelect:'none' }}>{fmt(r.amount)}</div>
+                <div style={{fontSize:11,fontWeight:800,userSelect:'none',
+                  filter:isMe?'none':'blur(5px)',
+                  color:isMe?'#FCD34D':'rgba(255,255,255,0.85)'}}>
+                  {fmt(r.amount)}
+                </div>
               </div>
             );
           })}
         </div>
 
-        <div style={{ marginTop:8, padding:'9px 12px', borderRadius:12,
+        <div style={{marginTop:8,padding:'8px 12px',borderRadius:12,
           background:'linear-gradient(135deg,rgba(252,211,77,0.15),rgba(249,115,22,0.1))',
-          border:'1px solid rgba(252,211,77,0.25)',
-          display:'flex', alignItems:'center', gap:10 }}>
-          <div style={{ fontSize:20 }}>🍷</div>
-          <div style={{ flex:1 }}>
-            <div style={{ fontSize:10, color:'rgba(252,211,77,0.9)', fontWeight:700 }}>PRÊMIO</div>
-            <div style={{ fontSize:12, fontWeight:700 }}>{PARTY.prize}</div>
+          border:'1px solid rgba(252,211,77,0.25)',display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
+          <div style={{fontSize:18}}>🍷</div>
+          <div style={{flex:1}}>
+            <div style={{fontSize:10,color:'rgba(252,211,77,0.9)',fontWeight:700}}>PRÊMIO</div>
+            <div style={{fontSize:12,fontWeight:700}}>{PARTY.prize}</div>
           </div>
-          <div style={{ fontSize:11, color:'rgba(255,255,255,0.5)' }}>{total} apostas</div>
+          <div style={{fontSize:11,color:'rgba(255,255,255,0.5)'}}>{total} apostas</div>
         </div>
 
         {name && (
-          <button onClick={onShare} style={{
-            width:'100%', height:50, borderRadius:16, border:'none', marginTop:8,
-            background:'linear-gradient(135deg,#F58529,#DD2A7B,#8134AF,#515BD4)',
-            color:'#fff', fontSize:14, fontWeight:800, fontFamily:'inherit', fontStyle:'italic',
-            boxShadow:'0 10px 28px rgba(221,42,123,0.4)', cursor:'pointer',
-            display:'flex', alignItems:'center', justifyContent:'center', gap:8,
-          }}>
-            📸 Compartilhar minha aposta no Instagram
+          <button onClick={handleShare} disabled={sharing} style={{
+            width:'100%',height:48,borderRadius:16,border:'none',
+            background:sharing?'rgba(255,255,255,0.1)':'linear-gradient(135deg,#F58529,#DD2A7B,#8134AF,#515BD4)',
+            color:sharing?'rgba(255,255,255,0.4)':'#fff',
+            fontSize:13,fontWeight:800,fontFamily:'inherit',fontStyle:'italic',
+            boxShadow:sharing?'none':'0 8px 24px rgba(221,42,123,0.35)',cursor:'pointer',
+            display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+            {sharing?<><Spinner/> Gerando imagem...</>:'📸 Compartilhar minha aposta'}
           </button>
         )}
       </div>
@@ -968,126 +865,302 @@ function RankingScreen({ bets, myBetId, appState, onBack, name, team, onShare })
   );
 }
 
-// ─── APP PRINCIPAL ────────────────────────────────────────────────────────────
-function App() {
-  const [screen, setScreen]   = React.useState('splash');
-  const [name,   setName]     = React.useState('');
-  const [team,   setTeam]     = React.useState('girl');
-  const [amount, setAmount]   = React.useState(50);
-  const [betId,  setBetId]    = React.useState(null);
-  const [bets,   setBets]     = React.useState([]);
-  const [appState, setAppState] = React.useState({ revealed: null, winners: null });
+// ─── ADMIN: LOGIN ─────────────────────────────────────────────────────────────
+function AdminLogin({ onClose, onSuccess }) {
+  const [pass, setPass] = React.useState('');
+  const [err, setErr]   = React.useState(false);
   const [loading, setLoading] = React.useState(false);
-  const [showShare, setShowShare] = React.useState(false);
 
-  // Socket.io para tempo real
+  const tryLogin = async () => {
+    setLoading(true);
+    sessionStorage.setItem('adminPass', pass);
+    try {
+      const d = await adminFetch('/api/state');
+      if (d.error || d.message) { setErr(true); sessionStorage.removeItem('adminPass'); }
+      else onSuccess();
+    } catch(e) { setErr(true); }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{position:'absolute',inset:0,zIndex:200,
+      background:'rgba(0,0,0,0.88)',display:'flex',flexDirection:'column',
+      alignItems:'center',justifyContent:'center',padding:28,animation:'fadeIn .2s ease'}}>
+      <div style={{width:'100%',maxWidth:320,background:'#161628',borderRadius:24,
+        padding:24,border:'1px solid rgba(255,255,255,0.12)'}}>
+        <div style={{fontSize:22,fontWeight:900,fontStyle:'italic',color:'#fff',marginBottom:4}}>🔒 Admin</div>
+        <div style={{fontSize:13,color:'rgba(255,255,255,0.55)',marginBottom:20}}>
+          Senha de acesso ao painel
+        </div>
+        <input type="password" value={pass} onChange={e=>{setPass(e.target.value);setErr(false);}}
+          onKeyDown={e=>e.key==='Enter'&&!loading&&tryLogin()}
+          placeholder="Senha..."
+          style={{width:'100%',background:'rgba(255,255,255,0.06)',
+            border:'1px solid '+(err?'#F87171':'rgba(255,255,255,0.15)'),
+            borderRadius:14,padding:'14px 16px',color:'#fff',fontSize:16,fontFamily:'inherit',
+            outline:'none',marginBottom:err?6:16}} />
+        {err&&<div style={{fontSize:12,color:'#F87171',marginBottom:12}}>Senha incorreta.</div>}
+        <div style={{display:'flex',gap:8}}>
+          <button onClick={tryLogin} disabled={loading} style={{flex:2,height:46,borderRadius:14,border:'none',
+            background:'linear-gradient(90deg,#2563EB,#EC4899)',color:'#fff',
+            fontSize:14,fontWeight:800,fontFamily:'inherit',cursor:'pointer',
+            display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+            {loading?<><Spinner/> Entrando...</>:'Entrar'}
+          </button>
+          <button onClick={onClose} style={{flex:1,height:46,borderRadius:14,
+            background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.12)',
+            color:'rgba(255,255,255,0.6)',fontSize:13,fontWeight:700,fontFamily:'inherit',cursor:'pointer'}}>
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── ADMIN: PAINEL ────────────────────────────────────────────────────────────
+function AdminPanel({ bets, appState, onClose, onUpdate }) {
+  const [loading, setLoading] = React.useState('');
+  const [confirm, setConfirm] = React.useState('');
+  const { revealed, winners } = appState||{};
+  const sorted = [...bets].sort((a,b)=>b.amount-a.amount);
+  const total = bets.reduce((s,b)=>s+b.amount, 0);
+
+  const act = async (key, fn) => {
+    setLoading(key);
+    try { await fn(); await onUpdate(); } catch(e) {}
+    setLoading('');
+  };
+
+  const doReveal = (team) => act('reveal', () => adminFetch('/api/admin/reveal','POST',{team}));
+  const doDraw   = ()     => act('draw',   () => adminFetch('/api/admin/draw','POST'));
+  const doDelete = (id)   => act(`del${id}`,()=> adminFetch(`/api/admin/bets/${id}`,'DELETE'));
+  const doReset  = () => {
+    if (confirm!=='reset') { setConfirm('reset'); return; }
+    setConfirm('');
+    act('reset', () => adminFetch('/api/admin/reset','DELETE'));
+  };
+
+  return (
+    <div style={{position:'absolute',inset:0,zIndex:150,background:'#0a0a1a',
+      display:'flex',flexDirection:'column',animation:'fadeIn .2s ease',color:'#fff'}}>
+      {/* header */}
+      <div style={{padding:'54px 22px 14px',background:'#0F0F23',
+        borderBottom:'1px solid rgba(255,255,255,0.08)'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div>
+            <div style={{fontSize:11,fontWeight:800,letterSpacing:2,
+              background:'linear-gradient(90deg,#60A5FA,#F472B6)',
+              WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>PAINEL ADMIN</div>
+            <div style={{fontSize:20,fontWeight:900,fontStyle:'italic'}}>
+              {bets.length} apostas · {fmt(total)}
+            </div>
+          </div>
+          <div onClick={onClose} style={{width:36,height:36,borderRadius:18,
+            background:'rgba(255,255,255,0.1)',border:'1px solid rgba(255,255,255,0.15)',
+            display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,cursor:'pointer'}}>✕</div>
+        </div>
+      </div>
+
+      <div style={{flex:1,overflowY:'auto',padding:'14px 22px 28px',
+        display:'flex',flexDirection:'column',gap:12}}>
+
+        {/* Revelação */}
+        <div style={{background:'#161628',borderRadius:18,padding:16,
+          border:'1px solid rgba(255,255,255,0.08)'}}>
+          <div style={{fontSize:11,fontWeight:800,letterSpacing:1.5,
+            color:'rgba(255,255,255,0.45)',marginBottom:10}}>REVELAÇÃO</div>
+          {revealed ? (
+            <div style={{padding:'10px 14px',borderRadius:12,
+              background:revealed==='boy'?'rgba(37,99,235,0.25)':'rgba(236,72,153,0.25)',
+              border:`1px solid ${revealed==='boy'?'rgba(96,165,250,0.4)':'rgba(244,114,182,0.4)'}`}}>
+              <div style={{fontSize:15,fontWeight:800,fontStyle:'italic'}}>
+                Revelado: {revealed==='boy'?'MENINO 👦':'MENINA 👧'}
+              </div>
+            </div>
+          ) : (
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+              {['boy','girl'].map(t => (
+                <button key={t} onClick={()=>doReveal(t)} disabled={!!loading}
+                  style={{ height:56,borderRadius:14,border:'none',cursor:loading?'default':'pointer',
+                    background:t==='boy'?'linear-gradient(90deg,#60A5FA,#2563EB)':'linear-gradient(90deg,#F472B6,#EC4899)',
+                    color:'#fff',fontSize:15,fontWeight:800,fontFamily:'inherit',fontStyle:'italic',
+                    display:'flex',alignItems:'center',justifyContent:'center',gap:8,
+                    opacity:loading?0.6:1 }}>
+                  {loading==='reveal'?<Spinner/>:(t==='boy'?'👦 MENINO':'👧 MENINA')}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Sorteio */}
+        <div style={{background:'#161628',borderRadius:18,padding:16,
+          border:'1px solid rgba(255,255,255,0.08)'}}>
+          <div style={{fontSize:11,fontWeight:800,letterSpacing:1.5,
+            color:'rgba(255,255,255,0.45)',marginBottom:10}}>SORTEIO</div>
+          {winners ? (
+            <div style={{padding:'12px 14px',borderRadius:12,
+              background:'rgba(252,211,77,0.12)',border:'1px solid rgba(252,211,77,0.3)'}}>
+              <div style={{fontSize:12,fontWeight:800,color:'#FCD34D',marginBottom:6}}>🍷 RESULTADO</div>
+              {winners.highestBet&&<div style={{fontSize:13,marginBottom:4}}>
+                💰 Maior aposta: <b>{winners.highestBet.name}</b>{' '}
+                <span style={{color:'rgba(255,255,255,0.5)',fontSize:11}}>({fmt(winners.highestBet.amount)})</span>
+              </div>}
+              {winners.raffle&&<div style={{fontSize:13}}>
+                🎲 Sorteio: <b>{winners.raffle.name}</b>{' '}
+                <span style={{color:'rgba(255,255,255,0.5)',fontSize:11}}>({fmt(winners.raffle.amount)})</span>
+              </div>}
+              {!winners.raffle&&<div style={{fontSize:12,color:'rgba(255,255,255,0.5)',marginTop:4}}>
+                Ninguém acertou o time — sem ganhador no sorteio.
+              </div>}
+            </div>
+          ) : (
+            <>
+              <button onClick={doDraw} disabled={!revealed||!!loading}
+                style={{ width:'100%',height:52,borderRadius:14,border:'none',
+                  cursor:revealed&&!loading?'pointer':'default',
+                  background:revealed?'linear-gradient(90deg,#F97316,#FCD34D)':'rgba(255,255,255,0.06)',
+                  color:revealed?'#0a0a1a':'rgba(255,255,255,0.3)',
+                  fontSize:15,fontWeight:800,fontFamily:'inherit',fontStyle:'italic',
+                  display:'flex',alignItems:'center',justifyContent:'center',gap:8,
+                  opacity:loading?0.6:1 }}>
+                {loading==='draw'?<Spinner/>:'🎲 Realizar Sorteio'}
+              </button>
+              {!revealed&&<div style={{fontSize:11,color:'rgba(255,255,255,0.4)',marginTop:8,textAlign:'center'}}>
+                Faça a revelação primeiro.
+              </div>}
+            </>
+          )}
+        </div>
+
+        {/* Lista */}
+        <div style={{background:'#161628',borderRadius:18,padding:16,
+          border:'1px solid rgba(255,255,255,0.08)'}}>
+          <div style={{fontSize:11,fontWeight:800,letterSpacing:1.5,
+            color:'rgba(255,255,255,0.45)',marginBottom:10}}>
+            APOSTAS ({bets.length})
+          </div>
+          {sorted.length===0&&<div style={{textAlign:'center',color:'rgba(255,255,255,0.4)',
+            fontSize:13,padding:'20px 0',fontStyle:'italic'}}>Nenhuma aposta ainda.</div>}
+          <div style={{display:'flex',flexDirection:'column',gap:6}}>
+            {sorted.map((b,i) => {
+              const tg = b.team==='boy'?'linear-gradient(135deg,#60A5FA,#2563EB)':'linear-gradient(135deg,#F472B6,#EC4899)';
+              const isDel = loading===`del${b.id}`;
+              return (
+                <div key={b.id} style={{display:'flex',alignItems:'center',gap:10,
+                  padding:'8px 10px',borderRadius:10,background:'rgba(255,255,255,0.04)',
+                  border:'1px solid rgba(255,255,255,0.06)'}}>
+                  <div style={{fontSize:11,fontWeight:700,color:'rgba(255,255,255,0.4)',width:18}}>{i+1}</div>
+                  <div style={{width:24,height:24,borderRadius:12,background:tg,flexShrink:0,
+                    display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:800}}>
+                    {b.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:12,fontWeight:600,whiteSpace:'nowrap',
+                      overflow:'hidden',textOverflow:'ellipsis'}}>{b.name}</div>
+                    <div style={{fontSize:10,color:'rgba(255,255,255,0.45)'}}>
+                      {b.team==='boy'?'👦 Boy':'👧 Girl'}
+                    </div>
+                  </div>
+                  <div style={{fontSize:13,fontWeight:800}}>{fmt(b.amount)}</div>
+                  <button onClick={()=>doDelete(b.id)} disabled={!!loading}
+                    style={{width:28,height:28,borderRadius:8,border:'none',
+                      background:'rgba(239,68,68,0.15)',color:'#F87171',fontSize:16,
+                      cursor:'pointer',flexShrink:0,display:'flex',alignItems:'center',
+                      justifyContent:'center',opacity:isDel?0.5:1}}>
+                    {isDel?<Spinner/>:'×'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Reset */}
+        <button onClick={doReset} disabled={!!loading}
+          style={{ width:'100%',height:46,borderRadius:14,
+            border:'1px solid rgba(239,68,68,0.35)',
+            background:confirm==='reset'?'rgba(239,68,68,0.25)':'rgba(239,68,68,0.08)',
+            color:'#F87171',fontSize:13,fontWeight:700,fontFamily:'inherit',cursor:'pointer' }}>
+          {confirm==='reset'?'⚠️ Clique de novo para confirmar':'🗑️ Resetar tudo (apostas + revelação)'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── APP ──────────────────────────────────────────────────────────────────────
+function App() {
+  const [screen,   setScreen]   = React.useState('splash');
+  const [name,     setName]     = React.useState('');
+  const [team,     setTeam]     = React.useState('girl');
+  const [amount,   setAmount]   = React.useState(50);
+  const [betId,    setBetId]    = React.useState(null);
+  const [bets,     setBets]     = React.useState([]);
+  const [appState, setAppState] = React.useState({ revealed:null, winners:null });
+  const [loading,  setLoading]  = React.useState(false);
+  const [showAdminLogin, setShowAdminLogin] = React.useState(false);
+  const [showAdmin,      setShowAdmin]      = React.useState(false);
+
+  const loadData = React.useCallback(() => {
+    fetch(`${API}/api/bets`).then(r=>r.json()).then(d=>setBets(d.bets||[])).catch(()=>{});
+    fetch(`${API}/api/state`).then(r=>r.json()).then(d=>setAppState(d)).catch(()=>{});
+  }, []);
+
   React.useEffect(() => {
-    const socket = io(API, { transports: ['websocket', 'polling'] });
-
-    socket.on('bet:new', ({ bet }) => {
-      setBets(prev => {
-        if (prev.find(b => b.id === bet.id)) return prev;
-        return [...prev, bet];
-      });
-    });
-
-    socket.on('bet:removed', ({ id }) => {
-      setBets(prev => prev.filter(b => b.id !== id));
-    });
-
-    socket.on('state:update', (s) => {
-      setAppState(s);
-    });
-
+    loadData();
+    const socket = io(window.location.origin, { transports:['websocket','polling'] });
+    socket.on('bet:new',      ({bet}) => setBets(p=>p.find(b=>b.id===bet.id)?p:[...p,bet]));
+    socket.on('bet:removed',  ({id})  => setBets(p=>p.filter(b=>b.id!==id)));
+    socket.on('state:update', s       => setAppState(s));
     return () => socket.disconnect();
   }, []);
 
-  // Carrega estado inicial
-  React.useEffect(() => {
-    fetch(`${API}/api/bets`)
-      .then(r => r.json())
-      .then(d => setBets(d.bets || []))
-      .catch(() => {});
-
-    fetch(`${API}/api/state`)
-      .then(r => r.json())
-      .then(d => setAppState(d))
-      .catch(() => {});
-  }, []);
-
-  // Helper para navegar ao ranking pelo splash
-  window._goRanking = () => setScreen('ranking');
-
-  // Salva aposta e vai para sucesso
-  const saveBet = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`${API}/api/bets`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), team, amount }),
-      });
-      const data = await res.json();
-      if (data.bet) {
-        setBetId(data.bet.id);
-        setScreen('success');
-      } else {
-        alert('Erro ao salvar aposta. Tente novamente.');
-      }
-    } catch(e) {
-      alert('Erro de conexão. Verifique sua internet.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const goToPixScreen = () => {
-    // Salva o bet ao chegar na tela de Pix
     if (!betId) {
       setLoading(true);
       fetch(`${API}/api/bets`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), team, amount }),
-      })
-        .then(r => r.json())
-        .then(data => {
-          if (data.bet) setBetId(data.bet.id);
-        })
-        .catch(() => {})
-        .finally(() => { setLoading(false); });
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ name:name.trim(), team, amount }),
+      }).then(r=>r.json()).then(d=>{ if(d.bet) setBetId(d.bet.id); })
+        .catch(()=>{}).finally(()=>setLoading(false));
     }
     setScreen('pix');
   };
 
   const screens = {
-    splash:  <SplashScreen bets={bets} onStart={() => setScreen('name')} />,
+    splash:  <SplashScreen bets={bets} onStart={()=>setScreen('name')}
+               onRanking={()=>setScreen('ranking')} onAdmin={()=>setShowAdminLogin(true)} />,
     name:    <NameScreen name={name} setName={setName}
-               onNext={() => setScreen('gender')} onBack={() => setScreen('splash')} />,
+               onNext={()=>setScreen('gender')} onBack={()=>setScreen('splash')} />,
     gender:  <GenderScreen team={team} setTeam={setTeam}
-               onNext={() => setScreen('amount')} onBack={() => setScreen('name')} />,
+               onNext={()=>setScreen('amount')} onBack={()=>setScreen('name')} />,
     amount:  <AmountScreen amount={amount} setAmount={setAmount}
-               onNext={goToPixScreen} onBack={() => setScreen('gender')} />,
-    pix:     <PixScreen name={name} team={team} amount={amount} betId={betId}
-               loading={loading} onConfirm={() => setScreen('success')}
-               onBack={() => setScreen('amount')} />,
+               onNext={goToPixScreen} onBack={()=>setScreen('gender')} />,
+    pix:     <PixScreen name={name} team={team} amount={amount}
+               loading={loading} onConfirm={()=>setScreen('success')}
+               onBack={()=>setScreen('amount')} />,
     success: <SuccessScreen name={name} team={team} amount={amount}
-               onRanking={() => setScreen('ranking')} />,
+               onRanking={()=>setScreen('ranking')} />,
     ranking: <RankingScreen bets={bets} myBetId={betId} appState={appState}
-               name={name} team={team}
-               onShare={() => setShowShare(true)}
-               onBack={() => setScreen(betId ? 'success' : 'splash')} />,
+               name={name} team={team} onShare={()=>shareCard(name,team)}
+               onBack={()=>setScreen(betId?'success':'splash')} />,
   };
 
   return (
-    <div style={{ height:'100%', display:'flex', flexDirection:'column',
-      alignItems:'center', justifyContent:'center', background:'#0a0a1a' }}>
-      <div style={{ width:'100%', maxWidth:430, height:'100%',
-        maxHeight:920, position:'relative', overflow:'hidden',
-        background:'#0F0F23' }}>
+    <div style={{height:'100%',display:'flex',flexDirection:'column',
+      alignItems:'center',justifyContent:'center',background:'#0a0a1a'}}>
+      <div style={{width:'100%',maxWidth:430,height:'100%',maxHeight:920,
+        position:'relative',overflow:'hidden',background:'#0F0F23',color:'#fff'}}>
         {screens[screen]}
-        {showShare && (
-          <ShareModal name={name} team={team} onClose={() => setShowShare(false)} />
+        {showAdminLogin && !showAdmin && (
+          <AdminLogin onClose={()=>setShowAdminLogin(false)}
+            onSuccess={()=>{ setShowAdminLogin(false); setShowAdmin(true); loadData(); }} />
+        )}
+        {showAdmin && (
+          <AdminPanel bets={bets} appState={appState}
+            onClose={()=>setShowAdmin(false)} onUpdate={loadData} />
         )}
       </div>
     </div>
