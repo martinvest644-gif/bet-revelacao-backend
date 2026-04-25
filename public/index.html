@@ -82,18 +82,28 @@ function rrect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+async function loadPhotos() {
+  const candidates = [
+    'family.jpeg',
+    ...Array.from({length:12}, (_,i) => `photo${i+1}.jpg`),
+    ...Array.from({length:12}, (_,i) => `photo${i+1}.jpeg`),
+  ];
+  const imgs = await Promise.all(candidates.map(src => new Promise(res => {
+    const img = new Image();
+    img.onload  = () => res(img);
+    img.onerror = () => res(null);
+    img.src = src;
+  })));
+  return imgs.filter(Boolean);
+}
+
 async function generateShareCard(name, team) {
   const W = 1080, H = 1920;
   const cv = document.createElement('canvas');
   cv.width = W; cv.height = H;
   const c = cv.getContext('2d');
 
-  const familyImg = await new Promise(res => {
-    const img = new Image();
-    img.onload  = () => res(img);
-    img.onerror = () => res(null);
-    img.src = 'family.jpeg';
-  });
+  const photos = await loadPhotos();
 
   // fundo gradiente
   const gBg = c.createLinearGradient(0, 0, W, H);
@@ -105,7 +115,7 @@ async function generateShareCard(name, team) {
   c.fillStyle = gBg; c.fillRect(0,0,W,H);
 
   // fotos da família caindo em posições rotacionadas
-  if (familyImg) {
+  if (photos.length > 0) {
     const placements = [
       { x:860, y:200,  s:260, rot:18,  alpha:0.22 },
       { x:80,  y:520,  s:200, rot:-12, alpha:0.18 },
@@ -114,14 +124,15 @@ async function generateShareCard(name, team) {
       { x:820, y:1400, s:210, rot:14,  alpha:0.19 },
       { x:180, y:1640, s:190, rot:-20, alpha:0.17 },
     ];
-    placements.forEach(({ x, y, s, rot, alpha }) => {
+    placements.forEach(({ x, y, s, rot, alpha }, i) => {
+      const img = photos[i % photos.length];
       c.save();
       c.globalAlpha = alpha;
       c.translate(x, y);
       c.rotate(rot * Math.PI / 180);
       rrect(c, -s/2, -s/2, s, s, 24);
       c.clip();
-      c.drawImage(familyImg, -s/2, -s/2, s, s);
+      c.drawImage(img, -s/2, -s/2, s, s);
       c.restore();
     });
   }
@@ -922,13 +933,18 @@ function AdminLogin({ onClose, onSuccess }) {
 function AdminPanel({ bets, appState, onClose, onUpdate }) {
   const [loading, setLoading] = React.useState('');
   const [confirm, setConfirm] = React.useState('');
+  const [errMsg,  setErrMsg]  = React.useState('');
   const { revealed, winners } = appState||{};
   const sorted = [...bets].sort((a,b)=>b.amount-a.amount);
   const total = bets.reduce((s,b)=>s+b.amount, 0);
 
   const act = async (key, fn) => {
-    setLoading(key);
-    try { await fn(); await onUpdate(); } catch(e) {}
+    setLoading(key); setErrMsg('');
+    try {
+      const res = await fn();
+      if (res && res.error) { setErrMsg(res.error); }
+      else { await onUpdate(); }
+    } catch(e) { setErrMsg('Erro de conexão. Tente novamente.'); }
     setLoading('');
   };
 
@@ -964,6 +980,14 @@ function AdminPanel({ bets, appState, onClose, onUpdate }) {
 
       <div style={{flex:1,overflowY:'auto',padding:'14px 22px 28px',
         display:'flex',flexDirection:'column',gap:12}}>
+
+        {errMsg && (
+          <div style={{padding:'10px 14px',borderRadius:12,
+            background:'rgba(239,68,68,0.15)',border:'1px solid rgba(239,68,68,0.35)',
+            color:'#F87171',fontSize:13,fontWeight:600}}>
+            ⚠️ {errMsg}
+          </div>
+        )}
 
         {/* Revelação */}
         <div style={{background:'#161628',borderRadius:18,padding:16,
@@ -1103,9 +1127,13 @@ function App() {
   const [showAdminLogin, setShowAdminLogin] = React.useState(false);
   const [showAdmin,      setShowAdmin]      = React.useState(false);
 
-  const loadData = React.useCallback(() => {
-    fetch(`${API}/api/bets`).then(r=>r.json()).then(d=>setBets(d.bets||[])).catch(()=>{});
-    fetch(`${API}/api/state`).then(r=>r.json()).then(d=>setAppState(d)).catch(()=>{});
+  const loadData = React.useCallback(async () => {
+    const [betsData, stateData] = await Promise.all([
+      fetch(`${API}/api/bets`).then(r=>r.json()).catch(()=>null),
+      fetch(`${API}/api/state`).then(r=>r.json()).catch(()=>null),
+    ]);
+    if (betsData) setBets(betsData.bets || []);
+    if (stateData) setAppState(stateData);
   }, []);
 
   React.useEffect(() => {
