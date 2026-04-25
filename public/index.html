@@ -120,26 +120,26 @@ async function generateShareCard(name, team) {
     const shuffled = [...photos].sort(() => Math.random() - 0.5);
 
     const placements = [
-      { x:860, y:140,  s:240, rot:18,  alpha:0.22 },
-      { x:90,  y:340,  s:200, rot:-12, alpha:0.18 },
-      { x:800, y:530,  s:220, rot:25,  alpha:0.20 },
-      { x:50,  y:720,  s:180, rot:-8,  alpha:0.16 },
-      { x:850, y:900,  s:210, rot:14,  alpha:0.19 },
-      { x:160, y:1060, s:190, rot:-20, alpha:0.17 },
-      { x:820, y:1220, s:230, rot:8,   alpha:0.20 },
-      { x:70,  y:1390, s:200, rot:-15, alpha:0.18 },
-      { x:860, y:1560, s:210, rot:22,  alpha:0.19 },
-      { x:200, y:1700, s:180, rot:-10, alpha:0.16 },
-      { x:540, y:300,  s:170, rot:6,   alpha:0.14 },
-      { x:500, y:1150, s:160, rot:-18, alpha:0.13 },
+      { x:860, y:140,  s:240, alpha:0.55 },
+      { x:90,  y:340,  s:200, alpha:0.50 },
+      { x:800, y:530,  s:220, alpha:0.52 },
+      { x:50,  y:720,  s:180, alpha:0.48 },
+      { x:850, y:900,  s:210, alpha:0.50 },
+      { x:160, y:1060, s:190, alpha:0.48 },
+      { x:820, y:1220, s:230, alpha:0.52 },
+      { x:70,  y:1390, s:200, alpha:0.50 },
+      { x:860, y:1560, s:210, alpha:0.52 },
+      { x:200, y:1700, s:180, alpha:0.48 },
+      { x:540, y:300,  s:170, alpha:0.45 },
+      { x:500, y:1150, s:160, alpha:0.45 },
     ];
-    placements.forEach(({ x, y, s, rot, alpha }, i) => {
+    placements.forEach(({ x, y, s, alpha }, i) => {
       const img = shuffled[i % shuffled.length];
       c.save();
       c.globalAlpha = alpha;
       c.translate(x, y);
-      c.rotate(rot * Math.PI / 180);
-      rrect(c, -s/2, -s/2, s, s, 24);
+      c.beginPath();
+      c.arc(0, 0, s / 2, 0, Math.PI * 2);
       c.clip();
       c.drawImage(img, -s/2, -s/2, s, s);
       c.restore();
