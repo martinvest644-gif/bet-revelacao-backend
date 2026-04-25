@@ -116,6 +116,9 @@ async function generateShareCard(name, team) {
 
   // fotos da família caindo em posições rotacionadas
   if (photos.length > 0) {
+    // embaralha as fotos para cada compartilhamento ser único
+    const shuffled = [...photos].sort(() => Math.random() - 0.5);
+
     const placements = [
       { x:860, y:140,  s:240, rot:18,  alpha:0.22 },
       { x:90,  y:340,  s:200, rot:-12, alpha:0.18 },
@@ -131,7 +134,7 @@ async function generateShareCard(name, team) {
       { x:500, y:1150, s:160, rot:-18, alpha:0.13 },
     ];
     placements.forEach(({ x, y, s, rot, alpha }, i) => {
-      const img = photos[i % photos.length];
+      const img = shuffled[i % shuffled.length];
       c.save();
       c.globalAlpha = alpha;
       c.translate(x, y);
