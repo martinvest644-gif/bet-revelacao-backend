@@ -85,8 +85,8 @@ function rrect(ctx, x, y, w, h, r) {
 async function loadPhotos() {
   const candidates = [
     'family.jpeg',
-    ...Array.from({length:12}, (_,i) => `photo${i+1}.jpg`),
-    ...Array.from({length:12}, (_,i) => `photo${i+1}.jpeg`),
+    ...Array.from({length:16}, (_,i) => `photo${i+1}.jpg`),
+    ...Array.from({length:16}, (_,i) => `photo${i+1}.jpeg`),
   ];
   const imgs = await Promise.all(candidates.map(src => new Promise(res => {
     const img = new Image();
@@ -117,12 +117,18 @@ async function generateShareCard(name, team) {
   // fotos da família caindo em posições rotacionadas
   if (photos.length > 0) {
     const placements = [
-      { x:860, y:200,  s:260, rot:18,  alpha:0.22 },
-      { x:80,  y:520,  s:200, rot:-12, alpha:0.18 },
-      { x:780, y:860,  s:230, rot:25,  alpha:0.20 },
-      { x:60,  y:1200, s:180, rot:-8,  alpha:0.16 },
-      { x:820, y:1400, s:210, rot:14,  alpha:0.19 },
-      { x:180, y:1640, s:190, rot:-20, alpha:0.17 },
+      { x:860, y:140,  s:240, rot:18,  alpha:0.22 },
+      { x:90,  y:340,  s:200, rot:-12, alpha:0.18 },
+      { x:800, y:530,  s:220, rot:25,  alpha:0.20 },
+      { x:50,  y:720,  s:180, rot:-8,  alpha:0.16 },
+      { x:850, y:900,  s:210, rot:14,  alpha:0.19 },
+      { x:160, y:1060, s:190, rot:-20, alpha:0.17 },
+      { x:820, y:1220, s:230, rot:8,   alpha:0.20 },
+      { x:70,  y:1390, s:200, rot:-15, alpha:0.18 },
+      { x:860, y:1560, s:210, rot:22,  alpha:0.19 },
+      { x:200, y:1700, s:180, rot:-10, alpha:0.16 },
+      { x:540, y:300,  s:170, rot:6,   alpha:0.14 },
+      { x:500, y:1150, s:160, rot:-18, alpha:0.13 },
     ];
     placements.forEach(({ x, y, s, rot, alpha }, i) => {
       const img = photos[i % photos.length];
