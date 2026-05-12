@@ -19,6 +19,26 @@
     @keyframes slideUp { from{transform:translateY(14px);opacity:0} to{transform:translateY(0);opacity:1} }
     @keyframes fadeIn  { from{opacity:0} to{opacity:1} }
     .screen { animation: fadeIn .25s ease; }
+
+    @keyframes wine-left {
+      0%   { transform: translateX(-130%) rotate(-30deg) scale(0.6); opacity:0; }
+      55%  { transform: translateX(10%) rotate(5deg) scale(1.08); opacity:1; }
+      72%  { transform: translateX(-4%) rotate(-2deg) scale(1.02); }
+      100% { transform: translateX(0%) rotate(0deg) scale(1); opacity:1; }
+    }
+    @keyframes wine-right {
+      0%   { transform: translateX(130%) rotate(30deg) scale(0.6); opacity:0; }
+      55%  { transform: translateX(-10%) rotate(-5deg) scale(1.08); opacity:1; }
+      72%  { transform: translateX(4%) rotate(2deg) scale(1.02); }
+      100% { transform: translateX(0%) rotate(0deg) scale(1); opacity:1; }
+    }
+    @keyframes wine-flash {
+      0%,100% { opacity:0; } 50% { opacity:0.85; }
+    }
+    @keyframes wine-text {
+      0%   { transform: translateY(40px) scale(0.8); opacity:0; }
+      100% { transform: translateY(0) scale(1); opacity:1; }
+    }
   </style>
 </head>
 <body>
@@ -355,6 +375,70 @@ function Spinner() {
   return <div style={{ width:16,height:16,borderRadius:8,
     border:'2px solid rgba(255,255,255,0.2)',borderTopColor:'#FCD34D',
     animation:'spin 1s linear infinite',display:'inline-block' }} />;
+}
+
+// ─── TELA: WINE REVEAL ───────────────────────────────────────────────────────
+function WineRevealScreen({ onDone }) {
+  const [phase, setPhase] = React.useState('enter'); // enter → flash → done
+
+  React.useEffect(() => {
+    // após 2.2s os rótulos chegaram → flash branco
+    const t1 = setTimeout(() => setPhase('flash'), 2200);
+    // após mais 0.5s → vai para sucesso
+    const t2 = setTimeout(() => { setPhase('done'); onDone(); }, 2750);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, []);
+
+  return (
+    <div style={{ position:'absolute', inset:0, zIndex:300, overflow:'hidden',
+      background:'#0a0a1a', display:'flex', flexDirection:'column',
+      alignItems:'center', justifyContent:'center' }}>
+
+      {/* Flash branco */}
+      {phase === 'flash' && (
+        <div style={{ position:'absolute', inset:0, background:'#fff', zIndex:10,
+          animation:'wine-flash 0.5s ease forwards' }} />
+      )}
+
+      {/* Confetti */}
+      <Confetti count={40} colors={['#FCD34D','#EC4899','#60A5FA','#fff','#F97316']} />
+
+      {/* Texto topo */}
+      <div style={{ position:'relative', zIndex:5, textAlign:'center', marginBottom:24,
+        animation:'wine-text 0.6s 0.3s ease both' }}>
+        <div style={{ fontSize:11, fontWeight:800, letterSpacing:3, color:'#FCD34D',
+          marginBottom:6 }}>🍷 O PRÊMIO EM JOGO</div>
+        <div style={{ fontSize:28, fontWeight:900, fontStyle:'italic', color:'#fff',
+          letterSpacing:-1, lineHeight:1 }}>APOSTE E GANHE</div>
+      </div>
+
+      {/* Rótulos */}
+      <div style={{ position:'relative', zIndex:5, display:'flex', gap:0,
+        alignItems:'center', justifyContent:'center', width:'100%', padding:'0 8px' }}>
+        <img src="rotulo1.jpeg" alt="Rótulo 1"
+          style={{ width:'48%', maxWidth:200, borderRadius:12,
+            boxShadow:'0 20px 60px rgba(0,0,0,0.8)',
+            animation:'wine-left 1.0s 0.1s cubic-bezier(.22,.68,0,1.2) both',
+            transform:'rotate(-4deg)', zIndex:2 }} />
+        <img src="rotulo2.jpeg" alt="Rótulo 2"
+          style={{ width:'48%', maxWidth:200, borderRadius:12,
+            boxShadow:'0 20px 60px rgba(0,0,0,0.8)',
+            animation:'wine-right 1.0s 0.1s cubic-bezier(.22,.68,0,1.2) both',
+            transform:'rotate(4deg)', zIndex:1, marginLeft:-16 }} />
+      </div>
+
+      {/* Texto base */}
+      <div style={{ position:'relative', zIndex:5, textAlign:'center', marginTop:28,
+        animation:'wine-text 0.6s 0.8s ease both' }}>
+        <div style={{ fontSize:13, color:'rgba(255,255,255,0.7)', fontStyle:'italic' }}>
+          Chá Revelação · Safra 2026
+        </div>
+        <div style={{ fontSize:11, color:'rgba(255,255,255,0.4)', marginTop:4 }}>
+          Famiglia Martins Sorato
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─── TELA 1: SPLASH ──────────────────────────────────────────────────────────
@@ -1138,6 +1222,7 @@ function App() {
   const [loading,  setLoading]  = React.useState(false);
   const [showAdminLogin, setShowAdminLogin] = React.useState(false);
   const [showAdmin,      setShowAdmin]      = React.useState(false);
+  const [showWineReveal, setShowWineReveal] = React.useState(false);
 
   const loadData = React.useCallback(async () => {
     const [betsData, stateData] = await Promise.all([
@@ -1179,7 +1264,7 @@ function App() {
     amount:  <AmountScreen amount={amount} setAmount={setAmount}
                onNext={goToPixScreen} onBack={()=>setScreen('gender')} />,
     pix:     <PixScreen name={name} team={team} amount={amount}
-               loading={loading} onConfirm={()=>setScreen('success')}
+               loading={loading} onConfirm={()=>{ setShowWineReveal(true); }}
                onBack={()=>setScreen('amount')} />,
     success: <SuccessScreen name={name} team={team} amount={amount}
                onRanking={()=>setScreen('ranking')} />,
@@ -1194,6 +1279,9 @@ function App() {
       <div style={{width:'100%',maxWidth:430,height:'100%',maxHeight:920,
         position:'relative',overflow:'hidden',background:'#0F0F23',color:'#fff'}}>
         {screens[screen]}
+        {showWineReveal && (
+          <WineRevealScreen onDone={() => { setShowWineReveal(false); setScreen('success'); }} />
+        )}
         {showAdminLogin && !showAdmin && (
           <AdminLogin onClose={()=>setShowAdminLogin(false)}
             onSuccess={()=>{ setShowAdminLogin(false); setShowAdmin(true); loadData(); }} />
