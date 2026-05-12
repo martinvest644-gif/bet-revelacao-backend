@@ -1089,9 +1089,10 @@ function AdminPanel({ bets, appState, onClose, onUpdate }) {
     setLoading('');
   };
 
-  const doReveal = (team) => act('reveal', () => adminFetch('/api/admin/reveal','POST',{team}));
-  const doDraw   = ()     => act('draw',   () => adminFetch('/api/admin/draw','POST'));
-  const doDelete = (id)   => act(`del${id}`,()=> adminFetch(`/api/admin/bets/${id}`,'DELETE'));
+  const doReveal    = (team) => act('reveal',    () => adminFetch('/api/admin/reveal','POST',{team}));
+  const doDraw      = ()     => act('draw',      () => adminFetch('/api/admin/draw','POST'));
+  const doResetDraw = ()     => act('resetDraw', () => adminFetch('/api/admin/draw','DELETE'));
+  const doDelete    = (id)   => act(`del${id}`,  () => adminFetch(`/api/admin/bets/${id}`,'DELETE'));
   const doReset  = () => {
     if (confirm!=='reset') { setConfirm('reset'); return; }
     setConfirm('');
@@ -1165,20 +1166,30 @@ function AdminPanel({ bets, appState, onClose, onUpdate }) {
           <div style={{fontSize:11,fontWeight:800,letterSpacing:1.5,
             color:'rgba(255,255,255,0.45)',marginBottom:10}}>SORTEIO</div>
           {winners ? (
-            <div style={{padding:'12px 14px',borderRadius:12,
-              background:'rgba(252,211,77,0.12)',border:'1px solid rgba(252,211,77,0.3)'}}>
-              <div style={{fontSize:12,fontWeight:800,color:'#FCD34D',marginBottom:6}}>🍷 RESULTADO</div>
-              {winners.highestBet&&<div style={{fontSize:13,marginBottom:4}}>
-                💰 Maior aposta: <b>{winners.highestBet.name}</b>{' '}
-                <span style={{color:'rgba(255,255,255,0.5)',fontSize:11}}>({fmt(winners.highestBet.amount)})</span>
-              </div>}
-              {winners.raffle&&<div style={{fontSize:13}}>
-                🎲 Sorteio: <b>{winners.raffle.name}</b>{' '}
-                <span style={{color:'rgba(255,255,255,0.5)',fontSize:11}}>({fmt(winners.raffle.amount)})</span>
-              </div>}
-              {!winners.raffle&&<div style={{fontSize:12,color:'rgba(255,255,255,0.5)',marginTop:4}}>
-                Ninguém acertou o time — sem ganhador no sorteio.
-              </div>}
+            <div>
+              <div style={{padding:'12px 14px',borderRadius:12,
+                background:'rgba(252,211,77,0.12)',border:'1px solid rgba(252,211,77,0.3)',marginBottom:10}}>
+                <div style={{fontSize:12,fontWeight:800,color:'#FCD34D',marginBottom:6}}>🍷 RESULTADO</div>
+                {winners.highestBet&&<div style={{fontSize:13,marginBottom:4}}>
+                  💰 Maior aposta: <b>{winners.highestBet.name}</b>{' '}
+                  <span style={{color:'rgba(255,255,255,0.5)',fontSize:11}}>({fmt(winners.highestBet.amount)})</span>
+                </div>}
+                {winners.raffle&&<div style={{fontSize:13}}>
+                  🎲 Sorteio: <b>{winners.raffle.name}</b>{' '}
+                  <span style={{color:'rgba(255,255,255,0.5)',fontSize:11}}>({fmt(winners.raffle.amount)})</span>
+                </div>}
+                {!winners.raffle&&<div style={{fontSize:12,color:'rgba(255,255,255,0.5)',marginTop:4}}>
+                  Ninguém acertou o time — sem ganhador no sorteio.
+                </div>}
+              </div>
+              <button onClick={doResetDraw} disabled={!!loading}
+                style={{width:'100%',height:42,borderRadius:12,
+                  border:'1px solid rgba(249,115,22,0.4)',
+                  background:'rgba(249,115,22,0.1)',
+                  color:'#FB923C',fontSize:13,fontWeight:700,
+                  fontFamily:'inherit',cursor:'pointer',opacity:loading?0.6:1}}>
+                {loading==='resetDraw'?<><Spinner/> Resetando...</>:'🔄 Refazer somente o sorteio'}
+              </button>
             </div>
           ) : (
             <>

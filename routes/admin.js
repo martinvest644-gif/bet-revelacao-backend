@@ -75,6 +75,14 @@ router.post('/draw', (req, res) => {
   return res.json(payload);
 });
 
+router.delete('/draw', (req, res) => {
+  db.prepare('UPDATE state SET winners = NULL WHERE id = 1').run();
+  const state = db.prepare('SELECT revealed FROM state WHERE id = 1').get();
+  const io = req.app.get('io');
+  io.emit('state:update', { revealed: state.revealed, winners: null });
+  return res.json({ ok: true });
+});
+
 router.delete('/bets/:id', (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) {
