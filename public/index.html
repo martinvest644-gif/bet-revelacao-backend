@@ -40,6 +40,8 @@ const PARTY = {
   eventDate: '16 de Maio às 17:00',
   prize:     'Vinho 90+ pts · R$ 1.000',
   pixCode:   '00020126420014BR.GOV.BCB.PIX0111057480081650205BBaby5204000053039865802BR5924Nicholas Eduardo Pereira6009SAO PAULO62140510NO6RiPLeRv630452AF',
+  boyName:   'Vitto Luganno Maximiliano',
+  girlName:  'Bella Luganna Maximiliana',
 };
 
 // ─── UTILS ───────────────────────────────────────────────────────────────────
@@ -189,9 +191,10 @@ async function generateShareCard(name, team) {
   c.font = `900 italic 148px -apple-system, Arial, sans-serif`;
   c.fillText('APOSTEI', 80, 780);
 
-  c.font = `900 italic 128px -apple-system, Arial, sans-serif`;
+  c.font = `900 italic 72px -apple-system, Arial, sans-serif`;
   c.fillStyle = team === 'boy' ? '#93C5FD' : '#F9A8D4';
-  c.fillText(team === 'boy' ? 'MENINO!' : 'MENINA!', 80, 940);
+  const teamLabel = team === 'boy' ? PARTY.boyName + '!' : PARTY.girlName + '!';
+  c.fillText(teamLabel, 80, 940);
   c.font = `110px sans-serif`;
   c.fillText(team === 'boy' ? '👦' : '👧', 80, 1070);
 
@@ -466,11 +469,11 @@ function GenderScreen({ team, setTeam, onNext, onBack }) {
         <StepLabel n="02" label="SEU PALPITE" />
         <div style={{fontSize:36,fontWeight:900,letterSpacing:-1.4,lineHeight:1,
           marginBottom:4,fontStyle:'italic'}}>Team</div>
-        <div style={{ fontSize:56,fontWeight:900,letterSpacing:-2.2,lineHeight:.9,
+        <div style={{ fontSize:team==='boy'?38:36,fontWeight:900,letterSpacing:-1.5,lineHeight:.9,
           marginBottom:10,fontStyle:'italic',transition:'all .3s',
           background:team==='boy'?'linear-gradient(90deg,#60A5FA,#2563EB)':'linear-gradient(90deg,#F472B6,#EC4899)',
           WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent' }}>
-          {team==='boy'?'BOY?':'GIRL?'}
+          {team==='boy'?PARTY.boyName+'?':PARTY.girlName+'?'}
         </div>
         <div style={{display:'inline-flex',alignSelf:'flex-start',alignItems:'center',gap:6,
           padding:'5px 11px',borderRadius:999,background:'rgba(252,211,77,0.12)',
@@ -489,8 +492,8 @@ function GenderScreen({ team, setTeam, onNext, onBack }) {
                 border:'1px solid '+(active?'transparent':'rgba(255,255,255,0.12)'),
                 transition:'all .2s',color:'#fff',cursor:'pointer' }}>
                 <div style={{fontSize:32}}>{g==='boy'?'👦':'👧'}</div>
-                <div style={{fontSize:19,fontWeight:800,flex:1,letterSpacing:-0.3,fontStyle:'italic'}}>
-                  TEAM {g==='boy'?'BOY':'GIRL'}
+                <div style={{fontSize:13,fontWeight:800,flex:1,letterSpacing:-0.3,fontStyle:'italic'}}>
+                  {g==='boy'?PARTY.boyName:PARTY.girlName}
                 </div>
                 <div style={{ width:24,height:24,borderRadius:12,
                   border:'2px solid '+(active?'#fff':'rgba(255,255,255,0.3)'),
@@ -599,7 +602,7 @@ function PixScreen({ name, team, amount, onConfirm, onBack, loading }) {
           </div>
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:10,color:'rgba(255,255,255,0.5)',marginBottom:2}}>
-              TEAM {team==='boy'?'BOY · 👦':'GIRL · 👧'} · {name.split(' ')[0].toUpperCase()}
+              {team==='boy'?PARTY.boyName+' 👦':PARTY.girlName+' 👧'} · {name.split(' ')[0].toUpperCase()}
             </div>
             <div style={{fontSize:26,fontWeight:900,letterSpacing:-1,lineHeight:1,fontStyle:'italic'}}>
               {fmt(amount)}
@@ -691,10 +694,10 @@ function SuccessScreen({ name, team, amount, onRanking }) {
           marginBottom:12,border:'1px solid rgba(255,255,255,0.12)'}}>
           <div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}>
             <span style={{color:'rgba(255,255,255,0.6)',fontSize:12}}>Seu palpite</span>
-            <span style={{fontSize:13,fontWeight:800,fontStyle:'italic',
+            <span style={{fontSize:11,fontWeight:800,fontStyle:'italic',
               background:team==='boy'?'linear-gradient(90deg,#60A5FA,#2563EB)':'linear-gradient(90deg,#F472B6,#EC4899)',
               WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>
-              {team==='boy'?'👦 TEAM BOY':'👧 TEAM GIRL'}
+              {team==='boy'?'👦 '+PARTY.boyName:'👧 '+PARTY.girlName}
             </span>
           </div>
           <div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}>
@@ -844,8 +847,8 @@ function RankingScreen({ bets, myBetId, appState, onBack, name, team, onShare })
                     overflow:'hidden',textOverflow:'ellipsis'}}>
                     {r.name} {isMe&&<span style={{color:'#FCD34D',fontSize:9,marginLeft:4}}>VOCÊ</span>}
                   </div>
-                  <div style={{fontSize:9,color:'rgba(255,255,255,0.45)'}}>
-                    Team {r.team==='boy'?'Boy 👦':'Girl 👧'}
+                  <div style={{fontSize:9,color:'rgba(255,255,255,0.45)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                    {r.team==='boy'?'👦 '+PARTY.boyName:'👧 '+PARTY.girlName}
                   </div>
                 </div>
                 <div style={{fontSize:11,fontWeight:800,userSelect:'none',
@@ -895,10 +898,10 @@ function AdminLogin({ onClose, onSuccess }) {
     setLoading(true);
     sessionStorage.setItem('adminPass', pass);
     try {
-      const d = await adminFetch('/api/state');
-      if (d.error || d.message) { setErr(true); sessionStorage.removeItem('adminPass'); }
-      else onSuccess();
-    } catch(e) { setErr(true); }
+      const d = await adminFetch('/api/admin/ping');
+      if (d.ok) { onSuccess(); }
+      else { setErr(true); sessionStorage.removeItem('adminPass'); }
+    } catch(e) { setErr(true); sessionStorage.removeItem('adminPass'); }
     setLoading(false);
   };
 
@@ -1092,8 +1095,8 @@ function AdminPanel({ bets, appState, onClose, onUpdate }) {
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontSize:12,fontWeight:600,whiteSpace:'nowrap',
                       overflow:'hidden',textOverflow:'ellipsis'}}>{b.name}</div>
-                    <div style={{fontSize:10,color:'rgba(255,255,255,0.45)'}}>
-                      {b.team==='boy'?'👦 Boy':'👧 Girl'}
+                    <div style={{fontSize:9,color:'rgba(255,255,255,0.45)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                      {b.team==='boy'?'👦 '+PARTY.boyName:'👧 '+PARTY.girlName}
                     </div>
                   </div>
                   <div style={{fontSize:13,fontWeight:800}}>{fmt(b.amount)}</div>

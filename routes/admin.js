@@ -13,6 +13,8 @@ function requireAdmin(req, res, next) {
 
 router.use(requireAdmin);
 
+router.get('/ping', (req, res) => res.json({ ok: true }));
+
 router.post('/reveal', (req, res) => {
   const { team } = req.body;
   if (team !== 'boy' && team !== 'girl') {
