@@ -119,13 +119,26 @@ async function loadPhotos() {
   return imgs.filter(Boolean);
 }
 
+async function loadImg(src) {
+  return new Promise(res => {
+    const img = new Image();
+    img.onload  = () => res(img);
+    img.onerror = () => res(null);
+    img.src = src;
+  });
+}
+
 async function generateShareCard(name, team) {
   const W = 1080, H = 1920;
   const cv = document.createElement('canvas');
   cv.width = W; cv.height = H;
   const c = cv.getContext('2d');
 
-  const photos = await loadPhotos();
+  const [photos, rotulo1, rotulo2] = await Promise.all([
+    loadPhotos(),
+    loadImg('rotulo1.jpeg'),
+    loadImg('rotulo2.jpeg'),
+  ]);
 
   // fundo gradiente
   const gBg = c.createLinearGradient(0, 0, W, H);
@@ -225,6 +238,31 @@ async function generateShareCard(name, team) {
   c.font = `bold 48px -apple-system, Arial, sans-serif`;
   c.fillStyle = 'rgba(255,255,255,0.55)';
   c.fillText(name, 80, 1220);
+
+  // rótulos de vinho — canto inferior esquerdo e direito
+  const drawRotulo = (img, cx, cy, w, h, rot) => {
+    if (!img) return;
+    c.save();
+    c.globalAlpha = 0.88;
+    c.translate(cx, cy);
+    c.rotate(rot * Math.PI / 180);
+    const r = 18;
+    rrect(c, -w/2, -h/2, w, h, r);
+    c.clip();
+    c.drawImage(img, -w/2, -h/2, w, h);
+    c.restore();
+    // sombra por cima
+    c.save();
+    c.globalAlpha = 0.22;
+    c.translate(cx, cy);
+    c.rotate(rot * Math.PI / 180);
+    c.fillStyle = '#000';
+    rrect(c, -w/2, -h/2, w, h, r);
+    c.fill();
+    c.restore();
+  };
+  drawRotulo(rotulo1, 210, H - 520, 240, 380, -12);
+  drawRotulo(rotulo2, 870, H - 480, 240, 380,  12);
 
   // card inferior
   c.fillStyle = 'rgba(255,255,255,0.14)';
@@ -382,10 +420,10 @@ function WineRevealScreen({ onDone }) {
   const [phase, setPhase] = React.useState('enter'); // enter → flash → done
 
   React.useEffect(() => {
-    // após 2.2s os rótulos chegaram → flash branco
-    const t1 = setTimeout(() => setPhase('flash'), 2200);
+    // após 5.5s os rótulos chegaram → flash branco
+    const t1 = setTimeout(() => setPhase('flash'), 5500);
     // após mais 0.5s → vai para sucesso
-    const t2 = setTimeout(() => { setPhase('done'); onDone(); }, 2750);
+    const t2 = setTimeout(() => { setPhase('done'); onDone(); }, 6000);
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, []);
 
@@ -435,6 +473,13 @@ function WineRevealScreen({ onDone }) {
         </div>
         <div style={{ fontSize:11, color:'rgba(255,255,255,0.4)', marginTop:4 }}>
           Famiglia Martins Sorato
+        </div>
+        <div style={{ marginTop:20, padding:'10px 20px', borderRadius:999,
+          background:'rgba(252,211,77,0.15)', border:'1px solid rgba(252,211,77,0.4)',
+          animation:'wine-text 0.6s 1.4s ease both' }}>
+          <div style={{ fontSize:13, fontWeight:700, color:'#FCD34D', letterSpacing:0.5 }}>
+            ⏳ Aguarde a próxima tela!
+          </div>
         </div>
       </div>
     </div>
